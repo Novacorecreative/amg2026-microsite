@@ -1,0 +1,39 @@
+# Render Blueprint: one web service with a persistent disk for the database and uploads.
+services:
+  - type: web
+    name: amg2026-microsite
+    runtime: node
+    plan: starter # a disk needs a paid instance; the free plan would lose all data on restart
+    region: singapore
+    buildCommand: npm ci
+    startCommand: node scripts/seed.js --once && node server.js
+    healthCheckPath: /api/config
+    disk:
+      name: amg-data
+      mountPath: /var/data
+      sizeGB: 20
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: DATA_DIR
+        value: /var/data/db
+      - key: UPLOAD_DIR
+        value: /var/data/uploads
+      - key: ADMIN_PASSWORD
+        generateValue: true
+      - key: BASE_URL
+        sync: false # set to the service's https address after the first deploy
+      - key: EVENT_NAME
+        value: AMG 2026
+      - key: CLIENT_NAME
+        value: Grindwell Norton
+      - key: EVENT_CITY
+        value: Goa
+      - key: EVENT_START_DATE
+        value: "2026-12-10"
+      - key: EVENT_END_DATE
+        value: "2026-12-12"
+      - key: DEFAULT_COUNTRY_CODE
+        value: "91"
+      - key: MAX_UPLOAD_MB
+        value: "250"

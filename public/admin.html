@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>AMG 2026 · Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    body { background: var(--sand-100); }
+    .admin { display: grid; grid-template-columns: 1fr; min-height: 100vh; }
+    @media (min-width: 900px) { .admin { grid-template-columns: 230px 1fr; } }
+    .side { background: var(--teal-900); color: #fff; padding: 18px 14px; }
+    .side h1 { font-size: 22px; } .side h1 span { color: var(--gold); }
+    .side .sub { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; opacity: .7; }
+    .side nav { display: flex; gap: 4px; margin-top: 18px; overflow-x: auto; }
+    @media (min-width: 900px) { .side nav { flex-direction: column; } .side { position: sticky; top: 0; height: 100vh; } }
+    .side nav a { color: #d6e7e4; text-decoration: none; padding: 9px 12px; border-radius: 10px; white-space: nowrap; font-weight: 500; display: flex; gap: 8px; align-items: center; }
+    .side nav a.active, .side nav a:hover { background: rgba(255,255,255,.1); color: #fff; }
+    .side nav a .count { margin-left: auto; background: var(--coral); border-radius: 999px; padding: 0 7px; font-size: 11px; }
+    .content { padding: 22px 18px 60px; max-width: 1180px; width: 100%; }
+    .content h2.page { font-size: 26px; margin-bottom: 16px; }
+    .stats { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }
+    .stat { background: #fff; border-radius: 14px; padding: 14px 16px; box-shadow: var(--shadow); }
+    .stat b { display: block; font-family: var(--font-display); font-size: 28px; color: var(--teal-700); }
+    .stat span { font-size: 12px; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { text-align: left; font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; padding: 8px; border-bottom: 1px solid var(--line); }
+    td { padding: 9px 8px; border-bottom: 1px solid var(--sand-100); vertical-align: top; }
+    .tablewrap { overflow-x: auto; }
+    .two { display: grid; gap: 14px; }
+    @media (min-width: 1000px) { .two { grid-template-columns: 380px 1fr; align-items: start; } }
+    .formgrid { display: grid; gap: 12px; grid-template-columns: 1fr 1fr; }
+    .formgrid .full { grid-column: 1 / -1; }
+    .qedit { border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-top: 12px; background: var(--sand-50); }
+    .optrow { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
+    .optrow input[type=radio] { width: 18px; height: 18px; accent-color: var(--ok); }
+    .chartbar { height: 26px; background: var(--sand-100); border-radius: 8px; position: relative; overflow: hidden; margin-top: 6px; }
+    .chartbar div { height: 100%; background: var(--teal-500); opacity: .85; }
+    .chartbar.correct div { background: var(--ok); }
+    .chartbar span { position: absolute; left: 10px; top: 3px; font-size: 13px; font-weight: 600; }
+    .chartbar em { position: absolute; right: 10px; top: 3px; font-style: normal; font-size: 13px; font-weight: 700; }
+    .winner { display: flex; align-items: center; gap: 16px; background: linear-gradient(120deg, color-mix(in srgb, var(--gold) 20%, #fff), #fff); border: 1px solid color-mix(in srgb, var(--gold) 55%, #fff); border-radius: 14px; padding: 16px; }
+    @media (min-width: 1000px) { .two.brandgrid { grid-template-columns: minmax(0, 1fr) 400px; } }
+    .side .brand-logo { margin-bottom: 12px; height: 40px; }
+    .side .brand-logo img { height: 28px; max-width: 150px; }
+    .colorrow { display: grid; grid-template-columns: 46px 110px 1fr; gap: 10px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--sand-100); }
+    .colorrow input[type=color] { width: 46px; height: 40px; border: 1px solid var(--line); border-radius: 10px; padding: 2px; background: #fff; cursor: pointer; }
+    .colorrow .input { padding: 8px 10px; font-family: ui-monospace, Consolas, monospace; }
+    .assetbox { display: flex; gap: 12px; align-items: center; padding: 10px; border: 1px dashed var(--line); border-radius: 12px; }
+    .assetbox .thumb { width: 120px; height: 64px; border-radius: 10px; display: grid; place-items: center; overflow: hidden; flex: none; background: var(--teal-900); color: #fff; font-size: 12px; }
+    .assetbox .thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .assetbox .thumb.photo img { width: 100%; height: 100%; object-fit: cover; }
+    .preview { border-radius: 22px; overflow: hidden; box-shadow: var(--shadow); background: var(--sand-100); max-width: 380px; border: 8px solid #1b1f1f; }
+    .preview .hero { padding: 18px 16px 56px; }
+    .preview .hero h1 { font-size: 38px; }
+    .preview .body { padding: 0 14px 18px; margin-top: -34px; position: relative; z-index: 2; }
+    .warn { background: #fff4e5; border: 1px solid #f3c27a; color: #7a4a00; border-radius: 10px; padding: 8px 12px; font-size: 13px; }
+    .emailframe { width: 100%; height: 470px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+    .swatches { display: flex; gap: 6px; flex-wrap: wrap; }
+    .swatches button { width: 26px; height: 26px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--line); cursor: pointer; }
+    .winner .trophy { font-size: 40px; }
+    .modgrid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+    .moditem { background: #fff; border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+    .moditem .thumb { aspect-ratio: 4/3; background: var(--sand-200); }
+    .moditem .thumb img, .moditem .thumb video { width: 100%; height: 100%; object-fit: cover; }
+    .moditem .meta { padding: 10px; font-size: 13px; }
+    .toggle { display: flex; align-items: center; gap: 10px; padding: 8px 0; }
+    .toggle input { width: 18px; height: 18px; accent-color: var(--teal-700); }
+    .chip { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 12px; background: var(--sand-100); }
+    .linkcell { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <div id="toasts"></div>
+  <script src="/js/brand.js"></script>
+  <script src="/js/admin.js"></script>
+</body>
+</html>
