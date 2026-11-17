@@ -2,11 +2,19 @@
 // Usage: node scripts/apply-branding.mjs https://your-site.onrender.com <admin-password>
 import { readFileSync } from 'node:fs';
 
-const [base, password] = process.argv.slice(2);
-if (!base || !password) {
-  console.error('Usage: node scripts/apply-branding.mjs <site address> <admin password>');
+import { createInterface } from 'node:readline';
+
+const [base, passArg] = process.argv.slice(2);
+if (!base) {
+  console.error('Usage: node scripts/apply-branding.mjs <site address> [admin password]');
   process.exit(1);
 }
+// Without a password argument, ask for it with typing hidden, so it stays out of shell history.
+const password = passArg || await new Promise((resolve) => {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  rl.question('Admin password (from Render > Environment > ADMIN_PASSWORD), then Enter: ', (v) => { rl.close(); console.log(); resolve(v.trim()); });
+  rl._writeToOutput = (s) => { if (!s.includes('Admin password')) return; rl.output.write(s); };
+});
 const BASE = base.replace(/\/$/, '');
 const file = (name, type) => new Blob([readFileSync(new URL(`../brand/${name}`, import.meta.url))], { type });
 
