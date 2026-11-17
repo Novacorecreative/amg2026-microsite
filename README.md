@@ -113,8 +113,9 @@ It does *not* suit purely static or serverless hosting, because files and the da
 3. When it's live, set `BASE_URL` to the service's `https://…onrender.com` address in **Environment** (it redeploys).
 4. Copy `ADMIN_PASSWORD` from **Environment** and load the client branding:
    ```bash
-   node scripts/apply-branding.mjs https://YOUR-SITE.onrender.com YOUR-ADMIN-PASSWORD
+   node --use-system-ca scripts/apply-branding.mjs https://YOUR-SITE.onrender.com
    ```
+   It asks for the admin password. `--use-system-ca` lets Node trust the same certificates as Windows; without it, antivirus HTTPS scanning (e.g. Avast) makes the request fail with "unable to verify the first certificate".
 Demo guests, agenda and quizzes are created once on the first start. Delete them in the admin before the real invitations go out.
 
 Set `BASE_URL=https://amg2026.yourdomain.com`, because it goes into every WhatsApp and email link. If you use Nginx, raise `client_max_body_size` to match `MAX_UPLOAD_MB` and turn off proxy buffering for `/api/stream`.
