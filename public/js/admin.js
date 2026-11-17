@@ -64,9 +64,12 @@
 
   // ---------- brand ----------
   let brand = null;
+  let eventMeta = '';
   async function loadBrand() {
     const cfg = await fetch('/api/config').then((r) => r.json());
     brand = cfg.branding;
+    const day = (d, o) => new Date(d + 'T00:00:00').toLocaleDateString('en-GB', o);
+    eventMeta = `${cfg.city} · ${day(cfg.startDate, { day: 'numeric', month: 'short' })} – ${day(cfg.endDate, { day: 'numeric', month: 'short', year: 'numeric' })}`;
     window.Brand.apply(brand);
     document.title = `${brand.eventName} · Admin`;
   }
@@ -599,7 +602,7 @@
               <button class="avatar-btn" style="margin-left:auto">AM</button></div>
             ${b.titleArt ? `<h1 class="has-art"><img class="title-art" src="${esc(b.titleArt)}" alt="" style="width:230px"></h1>` : `<h1>${titleHtml(b.eventName || 'Event')}</h1>`}
             ${b.tagline ? `<div class="tagline">${esc(b.tagline)}</div>` : ''}
-            <div class="meta">Goa · 10 Dec – 12 Dec 2026</div>
+            <div class="meta">${esc(eventMeta)}</div>
           </div>
           <svg class="wave" viewBox="0 0 1440 60" preserveAspectRatio="none"><path fill="currentColor" d="M0 40c160-22 320-22 480 0s320 22 480 0 320-22 480 0v20H0z"/></svg>
         </header>

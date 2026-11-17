@@ -6,12 +6,25 @@ const crypto = require('node:crypto');
 if (fs.existsSync(path.join(__dirname, '..', '.env'))) process.loadEnvFile(path.join(__dirname, '..', '.env'));
 const { db, tx, getSetting, setSetting } = require('../src/db');
 
+const start = process.env.EVENT_START_DATE || '2026-12-03';
+const addDays = (d, n) => new Date(Date.parse(d + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
+
+// When the event start date changes, move every agenda session by the same number of days.
+// (Before this was recorded, the agenda's first day is taken as the old start date.)
+const agendaStart = getSetting('agenda_start') || db.prepare('SELECT MIN(day) d FROM sessions').get().d;
+if (agendaStart && agendaStart !== start) {
+  const shift = Math.round((Date.parse(start) - Date.parse(agendaStart)) / 864e5);
+  for (const s of db.prepare('SELECT id, day FROM sessions').all()) {
+    db.prepare('UPDATE sessions SET day = ? WHERE id = ?').run(addDays(s.day, shift), s.id);
+  }
+  console.log(`Agenda moved ${shift} day(s) to start on ${start}`);
+}
+setSetting('agenda_start', start);
+
 // --once (used on the host at every start): seed only a brand-new database, so demo people
 // never come back after organisers delete them.
 if (process.argv.includes('--once') && getSetting('seeded')) process.exit(0);
 
-const start = process.env.EVENT_START_DATE || '2026-12-10';
-const addDays = (d, n) => new Date(Date.parse(d + 'T00:00:00Z') + n * 864e5).toISOString().slice(0, 10);
 const d1 = start, d2 = addDays(start, 1), d3 = addDays(start, 2);
 
 tx(() => {
