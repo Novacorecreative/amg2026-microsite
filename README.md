@@ -107,6 +107,16 @@ This app needs a host that keeps a Node process running and has a **persistent d
 
 It does *not* suit purely static or serverless hosting, because files and the database would be lost.
 
+**On Render (ready to go):** `render.yaml` sets up a Starter web service in Singapore with a 20 GB disk at `/var/data` for the database and uploads.
+1. Push this folder to a private GitHub repository.
+2. In Render, choose **New → Blueprint**, pick the repository, and apply.
+3. When it's live, set `BASE_URL` to the service's `https://…onrender.com` address in **Environment** (it redeploys).
+4. Copy `ADMIN_PASSWORD` from **Environment** and load the client branding:
+   ```bash
+   node scripts/apply-branding.mjs https://YOUR-SITE.onrender.com YOUR-ADMIN-PASSWORD
+   ```
+Demo guests, agenda and quizzes are created once on the first start. Delete them in the admin before the real invitations go out.
+
 Set `BASE_URL=https://amg2026.yourdomain.com`, because it goes into every WhatsApp and email link. If you use Nginx, raise `client_max_body_size` to match `MAX_UPLOAD_MB` and turn off proxy buffering for `/api/stream`.
 
 ## Event-day runbook
