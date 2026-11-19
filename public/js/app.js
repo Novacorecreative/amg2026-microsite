@@ -252,15 +252,27 @@
 
   // ---------- ENGAGE (quizzes & polls) ----------
   function updateEngageDot() {
-    const n = state.activities.filter((a) => a.status === 'live' && !a.my_submitted_at).length;
+    const n = state.activities.filter((a) => a.status === 'live' && !a.my_submitted_at).length
+      + (state.wheels || []).filter((w) => w.status === 'live' && w.my_label == null).length;
     const dot = $('#engageDot');
     dot.textContent = n; dot.classList.toggle('hidden', !n);
   }
 
   async function renderEngage(id) {
+    if (id && id.startsWith('w')) return renderWheel(Number(id.slice(1)));
     if (id) return renderActivity(Number(id));
-    const [acts, lb] = await Promise.all([api('/activities'), api('/leaderboard')]);
-    state.activities = acts; updateEngageDot();
+    const [acts, lb, wheels] = await Promise.all([api('/activities'), api('/leaderboard'), api('/wheels')]);
+    state.activities = acts; state.wheels = wheels; updateEngageDot();
+    const wheelCard = (w) => `
+      <a class="card act" href="#engage/w${w.id}">
+        <div class="row">
+          <span class="pill ${w.status === 'live' ? 'live' : ''}">${w.status === 'live' ? 'Live' : 'Closed'}</span>
+          <span class="pill">🎡 Spin the wheel</span>
+          ${w.my_label != null ? `<span class="pill ${w.my_win ? 'ok' : ''}">${w.my_win ? '🎉 ' : ''}${esc(w.my_label)}</span>` : ''}
+        </div>
+        <h3>${esc(w.title)}</h3>
+        <div class="muted small">${w.my_label != null ? 'You’ve had your spin' : w.status === 'live' ? 'One free spin each' : 'Closed'}${w.description ? ' · ' + esc(w.description) : ''}</div>
+      </a>`;
     const card = (a) => `
       <a class="card act" href="#engage/${a.id}">
         <div class="row">
@@ -271,15 +283,79 @@
         <h3>${esc(a.title)}</h3>
         <div class="muted small">${a.question_count} question${a.question_count === 1 ? '' : 's'}${a.description ? ' · ' + esc(a.description) : ''}</div>
       </a>`;
-    const live = acts.filter((a) => a.status === 'live'), closed = acts.filter((a) => a.status !== 'live');
+    const live = [...wheels.filter((w) => w.status === 'live').map(wheelCard), ...acts.filter((a) => a.status === 'live').map(card)];
+    const closed = [...wheels.filter((w) => w.status !== 'live').map(wheelCard), ...acts.filter((a) => a.status !== 'live').map(card)];
     view.innerHTML = `
-      <div class="card"><h2 style="font-size:20px">Quizzes & polls</h2>
-        <p class="muted small" style="margin:6px 0 0">Quizzes: highest score wins, ties go to whoever answered fastest. Polls: see how everyone voted right after you vote.</p></div>
+      <div class="card"><h2 style="font-size:20px">Games, quizzes & polls</h2>
+        <p class="muted small" style="margin:6px 0 0">Quizzes: highest score wins, ties go to whoever answered fastest. Polls: see how everyone voted right after you vote. Wheels: one free spin each.</p></div>
       <div class="section-title"><h2>Live now</h2></div>
-      ${live.length ? `<div class="act-list">${live.map(card).join('')}</div>` : '<div class="card empty"><div class="em">⏳</div>Nothing live right now — we’ll notify you when the next one starts.</div>'}
+      ${live.length ? `<div class="act-list">${live.join('')}</div>` : '<div class="card empty"><div class="em">⏳</div>Nothing live right now — we’ll notify you when the next one starts.</div>'}
       ${lb.visible && lb.rows.length ? `<div class="section-title"><h2>Leaderboard</h2></div>
         <div class="card">${lb.rows.map((r) => `<div class="leader"><div class="rank">${r.rank}</div><div style="flex:1"><b>${esc(r.name)}</b><div class="muted small">${esc(r.company || '')}</div></div><b>${r.points} pts</b></div>`).join('')}</div>` : ''}
-      ${closed.length ? `<div class="section-title"><h2>Earlier</h2></div><div class="act-list">${closed.map(card).join('')}</div>` : ''}`;
+      ${closed.length ? `<div class="section-title"><h2>Earlier</h2></div><div class="act-list">${closed.join('')}</div>` : ''}`;
+  }
+
+  // ---------- spin the wheel ----------
+  const WHEEL_COLORS = [['var(--teal-700)', 'var(--on-primary)'], ['var(--coral)', 'var(--on-accent)'], ['var(--gold)', 'var(--on-highlight)'], ['var(--teal-500)', 'var(--on-primary)']];
+  function wheelSvg(labels) {
+    const n = labels.length, seg = 360 / n;
+    const pt = (deg) => { const r = (deg * Math.PI) / 180; return `${(100 * Math.sin(r)).toFixed(2)} ${(-100 * Math.cos(r)).toFixed(2)}`; };
+    const color = (i) => WHEEL_COLORS[(i === n - 1 && n % WHEEL_COLORS.length === 1 ? 1 : i) % WHEEL_COLORS.length];
+    const short = (t) => (t.length > 16 ? t.slice(0, 15) + '…' : t);
+    return `<svg viewBox="-110 -110 220 220" class="wheel-svg" role="img" aria-label="Prize wheel: ${esc(labels.join(', '))}">
+      <circle r="106" fill="var(--teal-900)"/>
+      <g id="wheelRot">${labels.map((l, i) => {
+        const [bg, fg] = color(i), mid = (i + 0.5) * seg;
+        return `<path d="M0 0 L${pt(i * seg)} A100 100 0 ${seg > 180 ? 1 : 0} 1 ${pt((i + 1) * seg)} Z" fill="${bg}" stroke="#fff" stroke-width="1.2"/>
+          <g transform="rotate(${mid})"><text x="0" y="-56" transform="rotate(${mid > 180 ? 90 : -90} 0 -56)" text-anchor="middle" dominant-baseline="middle" fill="${fg}" font-size="${n > 8 ? 7.5 : 9}" font-weight="700">${esc(short(l))}</text></g>`;
+      }).join('')}</g>
+      <circle r="13" fill="#fff" stroke="var(--teal-900)" stroke-width="3"/>
+      <path d="M-9 -112 L9 -112 L0 -92 Z" fill="var(--gold)" stroke="#fff" stroke-width="2"/>
+    </svg>`;
+  }
+  async function renderWheel(id) {
+    const w = (await api('/wheels')).find((x) => x.id === id);
+    if (!w) { view.innerHTML = '<div class="card empty"><div class="em">🎡</div>This wheel isn’t available. <a href="#engage">Back to Play</a></div>'; return; }
+    const seg = 360 / w.prizes.length;
+    const resultHtml = (label, win) => win
+      ? `<div class="em">🎉</div><h2>You won: ${esc(label)}</h2><p class="muted small">Show this screen at the help desk to collect it.</p>`
+      : `<div class="em">🙌</div><h2>${esc(label)}</h2><p class="muted small">Thanks for playing — stay tuned for the next game.</p>`;
+    view.innerHTML = `
+      <a href="#engage" class="small">← All games</a>
+      <div class="card wheel-card">
+        <h2 style="font-size:22px">${esc(w.title)}</h2>
+        ${w.description ? `<p class="muted small" style="margin:4px 0 0">${esc(w.description)}</p>` : ''}
+        <div class="wheel-wrap">${wheelSvg(w.prizes)}</div>
+        <div id="wheelResult" class="wheel-result" aria-live="polite"></div>
+        ${w.my_label == null && w.status === 'live' ? '<button class="btn block" id="spinBtn">Spin the wheel</button><p class="muted small center" style="margin:8px 0 0">One spin per person.</p>' : ''}
+        ${w.my_label == null && w.status !== 'live' ? '<p class="muted center">This wheel has closed.</p>' : ''}
+      </div>`;
+    const rot = $('#wheelRot');
+    // Turn the wheel so segment i sits under the pointer at the top.
+    const landOn = (i, turns) => turns * 360 + (360 - (i + 0.5) * seg);
+    if (w.my_label != null) {
+      rot.style.transform = `rotate(${landOn(w.my_index, 0)}deg)`;
+      $('#wheelResult').innerHTML = resultHtml(w.my_label, !!w.my_win);
+      return;
+    }
+    const btn = $('#spinBtn');
+    if (!btn) return;
+    btn.onclick = async () => {
+      btn.disabled = true; btn.textContent = 'Spinning…';
+      let out;
+      try { out = await api(`/wheels/${id}/spin`, { method: 'POST' }); } catch (e) {
+        toast(e.message, { error: true }); btn.disabled = false; btn.textContent = 'Spin the wheel'; return;
+      }
+      const jitter = (Math.random() - 0.5) * seg * 0.6; // land somewhere inside the segment, not dead centre
+      const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+      rot.style.transition = still ? 'none' : 'transform 5s cubic-bezier(.15,.75,.1,1)';
+      rot.style.transform = `rotate(${landOn(out.index, still ? 0 : 6) + jitter}deg)`;
+      setTimeout(() => {
+        btn.remove(); $('.wheel-card .center')?.remove();
+        $('#wheelResult').innerHTML = resultHtml(out.label, out.win);
+        if (out.win) toast(`You won: ${out.label}`, { icon: '🎉' });
+      }, still ? 0 : 5200);
+    };
   }
 
   async function renderActivity(id) {
@@ -574,6 +650,13 @@
       const { id } = JSON.parse(e.data);
       const [t, arg] = location.hash.replace(/^#/, '').split('/');
       if (t === 'engage' && Number(arg) === id && !$('#submitAct')) renderActivity(id);
+    });
+    es.addEventListener('wheel', (e) => {
+      const w = JSON.parse(e.data);
+      if (w.status === 'live' && w.title) toast(`Spin the wheel: ${w.title}`, { href: '#engage/w' + w.id, icon: '🎡', ms: 8000 });
+      const [t, arg] = location.hash.replace(/^#/, '').split('/');
+      if (t === 'engage' && (!arg || (arg === 'w' + w.id && !$('#spinBtn')?.disabled))) renderEngage(arg);
+      else api('/wheels').then((x) => { state.wheels = x; updateEngageDot(); }).catch(() => {});
     });
     es.addEventListener('agenda', () => { if (tab() === 'agenda') renderAgenda(); });
     es.addEventListener('branding', (e) => { state.cfg.branding = JSON.parse(e.data); renderHeader(); });

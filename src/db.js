@@ -130,6 +130,26 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS wheels (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  description TEXT,
+  prizes TEXT NOT NULL DEFAULT '[]', -- JSON [{label, qty (null = unlimited), win}]
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','live','closed')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS wheel_spins (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  wheel_id INTEGER NOT NULL REFERENCES wheels(id) ON DELETE CASCADE,
+  attendee_id INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
+  prize_index INTEGER NOT NULL,
+  label TEXT NOT NULL,
+  win INTEGER NOT NULL,
+  spun_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (wheel_id, attendee_id)
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT

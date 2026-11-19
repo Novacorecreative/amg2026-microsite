@@ -1,7 +1,6 @@
-// Loads the AMG 2026 branding (files in brand/) onto a running microsite through the admin API.
-// Usage: node scripts/apply-branding.mjs https://your-site.onrender.com <admin-password>
+// Loads the AMG 2026 branding (brand/brand.json and its files) onto a running microsite through the admin API.
+// Usage: node --use-system-ca scripts/apply-branding.mjs https://your-site.onrender.com  (asks for the admin password)
 import { readFileSync } from 'node:fs';
-
 import { createInterface } from 'node:readline';
 
 const [base, passArg] = process.argv.slice(2);
@@ -23,20 +22,19 @@ const login = await fetch(`${BASE}/api/admin/login`, {
 }).then((r) => r.json());
 if (!login.token) throw new Error(`Login failed: ${JSON.stringify(login)}`);
 
+const brand = JSON.parse(readFileSync(new URL('../brand/brand.json', import.meta.url), 'utf8'));
+const type = (name) => (name.endsWith('.jpg') ? 'image/jpeg' : 'image/png');
 const fd = new FormData();
-for (const [k, v] of Object.entries({
-  clientName: 'Grindwell Norton', eventName: 'AMG 2026', tagline: 'Proud to Lead, Ready to Grow',
-  colorPrimary: '#1c2d7c', colorAccent: '#e8202e', colorHighlight: '#f07420',
-  logoBadge: 'true', heroTint: 'light', font: 'montserrat',
-})) fd.append(k, v);
-fd.append('logo', file('norton-saint-gobain.png', 'image/png'), 'norton-saint-gobain.png');
-fd.append('titleArt', file('amg-managers-meet-2026.png', 'image/png'), 'amg-managers-meet-2026.png');
-fd.append('hero', file('header-artwork.jpg', 'image/jpeg'), 'header-artwork.jpg');
+for (const k of ['clientName', 'eventName', 'tagline', 'colorPrimary', 'colorAccent', 'colorHighlight', 'logoBadge', 'heroTint', 'font']) {
+  fd.append(k, String(brand[k]));
+}
+fd.append('logo', file(brand.logo, type(brand.logo)), brand.logo);
+fd.append('titleArt', file(brand.titleArt, type(brand.titleArt)), brand.titleArt);
+fd.append('hero', file(brand.hero, type(brand.hero)), brand.hero);
 // Replace any partner logos already there, so re-running doesn't add duplicates.
 const current = await fetch(`${BASE}/api/config`).then((r) => r.json());
 fd.append('removePartners', JSON.stringify(current.branding.partnerLogos));
-fd.append('partners', file('lead-and-grow-2030.png', 'image/png'), 'lead-and-grow-2030.png');
-fd.append('partners', file('saint-gobain.png', 'image/png'), 'saint-gobain.png');
+for (const name of brand.partners) fd.append('partners', file(name, type(name)), name);
 
 const res = await fetch(`${BASE}/api/admin/branding`, { method: 'PUT', headers: { 'x-admin': login.token }, body: fd });
 const out = await res.json();

@@ -291,6 +291,17 @@ main { max-width: 980px; margin: -44px auto 0; padding: 0 16px 110px; position: 
 .gate { max-width: 440px; margin: 0 auto; }
 .empty { text-align: center; padding: 30px 10px; color: var(--muted); }
 .empty .em { font-size: 34px; }
+.center { text-align: center; }
+
+/* ---------- spin the wheel ---------- */
+.wheel-card { max-width: 460px; margin: 10px auto 0; text-align: center; }
+.wheel-wrap { width: min(340px, 82vw); margin: 18px auto 14px; filter: drop-shadow(0 10px 22px rgba(0,0,0,.18)); }
+.wheel-svg { display: block; width: 100%; height: auto; }
+.wheel-svg text { font-family: var(--font-display); }
+#wheelRot { transform-origin: 0 0; transform-box: view-box; }
+.wheel-result:not(:empty) { margin-bottom: 6px; }
+.wheel-result .em { font-size: 40px; }
+.wheel-result h2 { font-size: 22px; margin: 4px 0; }
 
 /* ---------- brand ---------- */
 .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }

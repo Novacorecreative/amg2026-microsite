@@ -297,6 +297,37 @@ api.post('/activities/:id/submit', (req, res) => {
   res.json({ ok: true, score: act.kind === 'quiz' ? score : null });
 });
 
+// ----- spin the wheel -----
+// Segments a guest can still land on: unlimited ones, or limited ones with stock left.
+function wheelAvailable(wheel) {
+  const given = new Map(db.prepare('SELECT prize_index i, COUNT(*) n FROM wheel_spins WHERE wheel_id = ? GROUP BY prize_index').all(wheel.id).map((r) => [r.i, r.n]));
+  return JSON.parse(wheel.prizes).map((p, i) => ({ ...p, i, left: p.qty == null ? null : Math.max(0, p.qty - (given.get(i) || 0)) }));
+}
+
+api.get('/wheels', (req, res) => {
+  const rows = db.prepare(`
+    SELECT w.id, w.title, w.description, w.prizes, w.status, s.prize_index AS my_index, s.label AS my_label, s.win AS my_win
+    FROM wheels w LEFT JOIN wheel_spins s ON s.wheel_id = w.id AND s.attendee_id = ?
+    WHERE w.status IN ('live','closed') ORDER BY (w.status = 'live') DESC, w.id DESC`).all(req.me.id);
+  // Guests see the segment names only, not how many prizes are left.
+  res.json(rows.map((w) => ({ ...w, prizes: JSON.parse(w.prizes).map((p) => p.label) })));
+});
+
+api.post('/wheels/:id/spin', (req, res) => {
+  const wheel = db.prepare("SELECT * FROM wheels WHERE id = ? AND status = 'live'").get(req.params.id);
+  if (!wheel) return bad(res, 'This wheel isn’t open right now', 404);
+  const mine = db.prepare('SELECT * FROM wheel_spins WHERE wheel_id = ? AND attendee_id = ?').get(wheel.id, req.me.id);
+  if (mine) return res.status(409).json({ error: 'You’ve already spun this wheel', index: mine.prize_index, label: mine.label, win: !!mine.win });
+  // The server picks the result, so it can't be gamed and limited prizes never run over.
+  const open = wheelAvailable(wheel).filter((p) => p.left == null || p.left > 0);
+  if (!open.length) return bad(res, 'All the prizes on this wheel have been won');
+  const pick = open[crypto.randomInt(open.length)];
+  const win = pick.win !== false;
+  db.prepare('INSERT INTO wheel_spins(wheel_id, attendee_id, prize_index, label, win) VALUES (?,?,?,?,?)').run(wheel.id, req.me.id, pick.i, pick.label, win ? 1 : 0);
+  live.sendAll('wheel-spin', { id: wheel.id });
+  res.json({ index: pick.i, label: pick.label, win });
+});
+
 api.get('/leaderboard', (_req, res) => {
   if (getSetting('leaderboard_visible', '0') !== '1') return res.json({ visible: false, rows: [] });
   res.json({ visible: true, rows: leaderboard().slice(0, 25) });
@@ -808,6 +839,86 @@ admin.delete('/activities/:id', (req, res) => {
 });
 
 admin.get('/leaderboard', (_req, res) => res.json(leaderboard()));
+
+// ----- spin the wheel -----
+function cleanPrizes(list) {
+  if (!Array.isArray(list)) throw new Error('Add the wheel’s segments');
+  const prizes = list.map((p) => ({
+    label: String(p?.label || '').trim().slice(0, 40),
+    qty: p?.qty === '' || p?.qty == null ? null : Math.max(0, Math.floor(Number(p.qty)) || 0),
+    win: p?.win !== false,
+  })).filter((p) => p.label);
+  if (prizes.length < 2 || prizes.length > 12) throw new Error('A wheel needs 2 to 12 segments');
+  return JSON.stringify(prizes);
+}
+
+admin.get('/wheels', (_req, res) => {
+  const wheels = db.prepare('SELECT * FROM wheels ORDER BY id DESC').all();
+  res.json(wheels.map((w) => ({
+    ...w,
+    prizes: wheelAvailable(w),
+    spins: db.prepare('SELECT COUNT(*) n FROM wheel_spins WHERE wheel_id = ?').get(w.id).n,
+  })));
+});
+
+admin.post('/wheels', (req, res) => {
+  const b = req.body || {};
+  if (!String(b.title || '').trim()) return bad(res, 'Give the wheel a title');
+  try {
+    const info = db.prepare('INSERT INTO wheels(title, description, prizes) VALUES (?,?,?)')
+      .run(String(b.title).trim().slice(0, 80), String(b.description || '').trim().slice(0, 200) || null, cleanPrizes(b.prizes));
+    res.json({ id: Number(info.lastInsertRowid) });
+  } catch (e) { bad(res, e.message); }
+});
+
+admin.put('/wheels/:id', (req, res) => {
+  const w = db.prepare('SELECT * FROM wheels WHERE id = ?').get(req.params.id);
+  if (!w) return bad(res, 'Not found', 404);
+  const b = req.body || {};
+  try {
+    const prizes = cleanPrizes(b.prizes);
+    // Spins remember which segment they landed on, so the segment list is fixed once anyone has spun.
+    const spun = db.prepare('SELECT COUNT(*) n FROM wheel_spins WHERE wheel_id = ?').get(w.id).n;
+    if (spun && JSON.parse(prizes).length !== JSON.parse(w.prizes).length) return bad(res, 'People have already spun, so segments can’t be added or removed now — you can still rename them or change quantities');
+    db.prepare('UPDATE wheels SET title = ?, description = ?, prizes = ? WHERE id = ?')
+      .run(String(b.title || w.title).trim().slice(0, 80), String(b.description ?? '').trim().slice(0, 200) || null, prizes, w.id);
+    live.sendAll('wheel', { id: w.id });
+    res.json({ ok: true });
+  } catch (e) { bad(res, e.message); }
+});
+
+admin.post('/wheels/:id/status', (req, res) => {
+  const w = db.prepare('SELECT * FROM wheels WHERE id = ?').get(req.params.id);
+  if (!w) return bad(res, 'Not found', 404);
+  const status = req.body?.status;
+  if (!['draft', 'live', 'closed'].includes(status)) return bad(res, 'Bad status');
+  db.prepare('UPDATE wheels SET status = ? WHERE id = ?').run(status, w.id);
+  live.sendAll('wheel', { id: w.id, status, title: w.title });
+  let notification = null;
+  if (status === 'live' && req.body?.notify) {
+    notification = broadcast({
+      title: `Spin the wheel: ${w.title}`,
+      waHeadline: `"${w.title}" spin-the-wheel is now live — one free spin each`,
+      message: 'You get one spin. Good luck!',
+      path: `/#engage/w${w.id}`,
+      cta: 'Spin now',
+    });
+  }
+  res.json({ ok: true, notification });
+});
+
+admin.get('/wheels/:id/spins', (req, res) => {
+  res.json(db.prepare(`
+    SELECT s.label, s.win, s.spun_at, a.name, a.company, a.phone, a.email
+    FROM wheel_spins s JOIN attendees a ON a.id = s.attendee_id
+    WHERE s.wheel_id = ? ORDER BY s.win DESC, s.spun_at`).all(req.params.id));
+});
+
+admin.delete('/wheels/:id', (req, res) => {
+  db.prepare('DELETE FROM wheels WHERE id = ?').run(req.params.id);
+  live.sendAll('wheel', { id: Number(req.params.id) });
+  res.json({ ok: true });
+});
 
 // ----- media moderation -----
 admin.get('/media', (req, res) => {

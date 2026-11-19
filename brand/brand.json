@@ -1,0 +1,15 @@
+{
+  "clientName": "Grindwell Norton",
+  "eventName": "AMG 2026",
+  "tagline": "Proud to Lead, Ready to Grow",
+  "colorPrimary": "#1c2d7c",
+  "colorAccent": "#e8202e",
+  "colorHighlight": "#f07420",
+  "logoBadge": true,
+  "heroTint": "light",
+  "font": "montserrat",
+  "logo": "norton-saint-gobain.png",
+  "titleArt": "amg-managers-meet-2026.png",
+  "hero": "header-artwork.jpg",
+  "partners": ["lead-and-grow-2030.png", "saint-gobain.png"]
+}

@@ -58,7 +58,7 @@
   // ---------- shell ----------
   const pages = {
     dashboard: ['📊', 'Dashboard'], attendees: ['👥', 'Attendees'], updates: ['📣', 'Updates & videos'],
-    engage: ['🏆', 'Quizzes & polls'], agenda: ['🗓️', 'Agenda'], gallery: ['📸', 'Gallery'], broadcast: ['📲', 'Broadcast'],
+    engage: ['🏆', 'Quizzes & polls'], wheels: ['🎡', 'Spin the wheel'], agenda: ['🗓️', 'Agenda'], gallery: ['📸', 'Gallery'], broadcast: ['📲', 'Broadcast'],
     branding: ['🎨', 'Branding'],
   };
 
@@ -388,6 +388,96 @@
     if (a.status === 'live') renderResults.t = setTimeout(() => location.hash === `#engage/${id}` && renderResults(id), 10000);
   }
 
+  // ---------- spin the wheel ----------
+  async function renderWheels(arg) {
+    const wheels = await api('/wheels');
+    if (arg === 'new') return wheelEditor();
+    if (arg && arg.startsWith('edit-')) return wheelEditor(wheels.find((w) => w.id === Number(arg.slice(5))));
+    if (arg) return wheelWinners(wheels.find((w) => w.id === Number(arg)));
+    const stock = (w) => w.prizes.map((p) => `${esc(p.label)}${p.qty == null ? '' : ` <span class="muted">(${p.left}/${p.qty} left)</span>`}`).join(' · ');
+    page().innerHTML = `<h2 class="page">Spin the wheel</h2>
+      <p class="muted" style="margin-top:-6px">Each guest gets one spin per wheel. The server picks where it lands, choosing only from segments that still have stock, so limited prizes never run over.</p>
+      <div class="row wrap" style="margin-bottom:14px"><a class="btn" href="#wheels/new">＋ New wheel</a></div>
+      <div class="card tablewrap"><table><tr><th>Wheel</th><th>Status</th><th>Segments</th><th>Spins</th><th></th></tr>
+        ${wheels.map((w) => `<tr><td><a href="#wheels/${w.id}"><b>${esc(w.title)}</b></a></td>
+          <td><span class="pill ${w.status === 'live' ? 'live' : w.status === 'closed' ? '' : 'gold'}">${w.status}</span></td>
+          <td class="small">${stock(w)}</td><td>${w.spins}</td>
+          <td><div class="row wrap">
+            ${w.status !== 'live' ? `<button class="btn sm" data-live="${w.id}">Go live</button>` : `<button class="btn sm secondary" data-close="${w.id}">Close</button>`}
+            <a class="btn sm ghost" href="#wheels/${w.id}">Winners</a>
+            <a class="btn sm ghost" href="#wheels/edit-${w.id}">Edit</a>
+            <button class="btn sm ghost" data-del="${w.id}" title="Delete">🗑</button></div></td></tr>`).join('') || '<tr><td colspan="5" class="muted">No wheels yet.</td></tr>'}
+      </table></div>`;
+    $$('[data-live]').forEach((b) => (b.onclick = run(async () => {
+      const notify = confirm('Open this wheel now.\n\nOK = also notify everyone on WhatsApp + email\nCancel = open quietly (only people on the site see it)');
+      const out = await api(`/wheels/${b.dataset.live}/status`, { method: 'POST', body: { status: 'live', notify } });
+      toast('The wheel is live.' + notified(out.notification)); renderWheels();
+    })));
+    $$('[data-close]').forEach((b) => (b.onclick = run(async () => { await api(`/wheels/${b.dataset.close}/status`, { method: 'POST', body: { status: 'closed' } }); toast('Closed'); renderWheels(); })));
+    $$('[data-del]').forEach((b) => (b.onclick = run(async () => { if (!confirm('Delete this wheel and its list of winners?')) return; await api('/wheels/' + b.dataset.del, { method: 'DELETE' }); renderWheels(); })));
+  }
+
+  function wheelEditor(w) {
+    const spun = w ? w.spins > 0 : false;
+    const m = w ? { title: w.title, description: w.description || '', prizes: w.prizes.map((p) => ({ label: p.label, qty: p.qty, win: p.win !== false })) }
+      : { title: 'Lucky Spin', description: '', prizes: [
+        { label: 'Goa Goodie Bag', qty: 20, win: true }, { label: 'Better luck next time', qty: null, win: false },
+        { label: 'Spa Voucher', qty: 5, win: true }, { label: 'Try again later', qty: null, win: false },
+        { label: 'Coffee Mug', qty: 30, win: true }, { label: 'Smart Watch', qty: 1, win: true }] };
+    const draw = () => {
+      page().innerHTML = `<a href="#wheels" class="small">← Back</a><h2 class="page" style="margin-top:8px">${w ? 'Edit' : 'New'} wheel</h2>
+        <div class="card stack">
+          <div class="formgrid">
+            <label class="field">Title<input class="input" id="wTitle" value="${esc(m.title)}" maxlength="80"></label>
+            <label class="field">Short description (optional)<input class="input" id="wDesc" value="${esc(m.description)}" maxlength="200" placeholder="e.g. Collect prizes at the help desk"></label>
+          </div>
+          <div><b>Segments</b> <span class="muted small">2–12, shown in this order around the wheel.</span>
+            ${spun ? '<div class="warn" style="margin-top:6px">People have already spun this wheel, so you can rename segments and change quantities but not add or remove them.</div>' : ''}</div>
+          <table><tr><th>Label</th><th>How many</th><th>Counts as a prize</th><th></th></tr>
+            ${m.prizes.map((p, i) => `<tr data-i="${i}">
+              <td><input class="input" data-f="label" value="${esc(p.label)}" maxlength="40"></td>
+              <td><input class="input" data-f="qty" type="number" min="0" value="${p.qty ?? ''}" placeholder="Unlimited" style="max-width:120px"></td>
+              <td><input type="checkbox" data-f="win" ${p.win ? 'checked' : ''} style="width:18px;height:18px"></td>
+              <td>${!spun && m.prizes.length > 2 ? '<button class="btn sm ghost" data-rm title="Remove">✕</button>' : ''}</td></tr>`).join('')}
+          </table>
+          <div class="muted small">Leave <i>How many</i> empty for no limit (good for "Better luck next time"). Untick <i>Counts as a prize</i> for segments that aren't a win, so they stay out of the winners list. Once a prize runs out, the wheel stops landing on it.</div>
+          <div class="row wrap">${!spun && m.prizes.length < 12 ? '<button class="btn ghost" id="addSeg">＋ Add segment</button>' : ''}<span class="spacer"></span><button class="btn" id="saveWheel">${w ? 'Save changes' : 'Save as draft'}</button></div>
+        </div>`;
+      const sync = () => {
+        m.title = $('#wTitle').value; m.description = $('#wDesc').value;
+        $$('tr[data-i]').forEach((tr) => {
+          const p = m.prizes[Number(tr.dataset.i)];
+          p.label = $('[data-f=label]', tr).value;
+          p.qty = $('[data-f=qty]', tr).value === '' ? null : Number($('[data-f=qty]', tr).value);
+          p.win = $('[data-f=win]', tr).checked;
+        });
+      };
+      $('#addSeg') && ($('#addSeg').onclick = () => { sync(); m.prizes.push({ label: '', qty: null, win: true }); draw(); });
+      $$('[data-rm]').forEach((b) => (b.onclick = () => { sync(); m.prizes.splice(Number(b.closest('tr').dataset.i), 1); draw(); }));
+      $('#saveWheel').onclick = run(async () => {
+        sync();
+        if (w) await api('/wheels/' + w.id, { method: 'PUT', body: m }); else await api('/wheels', { method: 'POST', body: m });
+        toast(w ? 'Saved' : 'Saved. Use “Go live” when you’re ready.'); location.hash = '#wheels';
+      });
+    };
+    draw();
+  }
+
+  async function wheelWinners(w) {
+    if (!w) { location.hash = '#wheels'; return; }
+    const spins = await api(`/wheels/${w.id}/spins`);
+    const winners = spins.filter((s) => s.win);
+    page().innerHTML = `<a href="#wheels" class="small">← Back</a><h2 class="page" style="margin-top:8px">${esc(w.title)}</h2>
+      <div class="stats" style="margin-bottom:14px">
+        <div class="stat"><b>${spins.length}</b><span>spins</span></div>
+        <div class="stat"><b>${winners.length}</b><span>prizes won</span></div>
+        ${w.prizes.filter((p) => p.qty != null).map((p) => `<div class="stat"><b>${p.left}/${p.qty}</b><span>${esc(p.label)} left</span></div>`).join('')}
+      </div>
+      <div class="card tablewrap"><h3 style="margin-bottom:8px">Winners</h3><table><tr><th>Prize</th><th>Name</th><th>Company</th><th>Phone</th><th>Email</th><th>When</th></tr>
+        ${winners.map((s) => `<tr><td><b>${esc(s.label)}</b></td><td>${esc(s.name)}</td><td>${esc(s.company || '')}</td><td>${esc(s.phone || '')}</td><td>${esc(s.email || '')}</td><td>${when(s.spun_at)}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No winners yet.</td></tr>'}
+      </table></div>`;
+  }
+
   async function renderLeaderboard() {
     const rows = await api('/leaderboard');
     page().innerHTML = `<a href="#engage" class="small">← Back</a><h2 class="page" style="margin-top:8px">Overall leaderboard</h2>
@@ -694,6 +784,6 @@
     refreshEmail();
   }
 
-  const renderers = { dashboard: renderDashboard, attendees: renderAttendees, updates: renderUpdates, engage: renderEngage, agenda: renderAgenda, gallery: renderGallery, broadcast: renderBroadcast, branding: renderBranding };
+  const renderers = { dashboard: renderDashboard, attendees: renderAttendees, updates: renderUpdates, engage: renderEngage, agenda: renderAgenda, gallery: renderGallery, broadcast: renderBroadcast, branding: renderBranding, wheels: renderWheels };
   loadBrand().catch(() => {}).finally(route);
 })();

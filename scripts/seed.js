@@ -78,7 +78,51 @@ tx(() => {
     q.run(poll, 0, 'choice', 'Which theme should we go with?', JSON.stringify(['Bollywood Retro', 'Goan Carnival', 'Black & Gold', 'Beach Luau']), null, 1);
     q.run(poll, 1, 'text', 'Any song requests for the DJ?', '[]', null, 1);
   }
+
+  if (!db.prepare('SELECT COUNT(*) n FROM wheels').get().n) {
+    db.prepare("INSERT INTO wheels(title, description, prizes, status) VALUES (?,?,?,'live')").run(
+      'Lucky Spin', 'Collect your prize at the help desk',
+      JSON.stringify([
+        { label: 'Goa Goodie Bag', qty: 20, win: true }, { label: 'Better luck next time', qty: null, win: false },
+        { label: 'Spa Voucher', qty: 5, win: true }, { label: 'Try again later', qty: null, win: false },
+        { label: 'Coffee Mug', qty: 30, win: true }, { label: 'Smart Watch', qty: 1, win: true },
+      ]));
+  }
 });
+
+// Client branding from brand/brand.json, if none is set yet. On a host without a disk every
+// restart starts from an empty database, so this keeps the site branded.
+if (!getSetting('brand_logo')) {
+  const brandDir = path.join(__dirname, '..', 'brand');
+  const b = JSON.parse(fs.readFileSync(path.join(brandDir, 'brand.json'), 'utf8'));
+  const uploadDir = process.env.UPLOAD_DIR || path.join(__dirname, '..', 'uploads');
+  fs.mkdirSync(uploadDir, { recursive: true });
+  const put = (name) => { fs.copyFileSync(path.join(brandDir, name), path.join(uploadDir, `brand-${name}`)); return `brand-${name}`; };
+  tx(() => {
+    setSetting('brand_client_name', b.clientName);
+    setSetting('brand_event_name', b.eventName);
+    setSetting('brand_tagline', b.tagline);
+    setSetting('brand_color_primary', b.colorPrimary);
+    setSetting('brand_color_accent', b.colorAccent);
+    setSetting('brand_color_highlight', b.colorHighlight);
+    setSetting('brand_logo_badge', b.logoBadge ? '1' : '0');
+    setSetting('brand_hero_tint', b.heroTint);
+    setSetting('brand_font', b.font);
+    setSetting('brand_logo', put(b.logo));
+    setSetting('brand_title_art', put(b.titleArt));
+    setSetting('brand_hero', put(b.hero));
+    setSetting('brand_partner_logos', JSON.stringify(b.partners.map(put)));
+  });
+  console.log('Applied branding from brand/brand.json');
+}
+
+// A guest with a fixed link for client previews: PREVIEW_TOKEN (set on the host) survives database resets.
+const previewToken = process.env.PREVIEW_TOKEN;
+if (previewToken && !db.prepare('SELECT 1 FROM attendees WHERE token = ?').get(previewToken)) {
+  db.prepare('INSERT INTO attendees(name, company, designation, token) VALUES (?,?,?,?)')
+    .run('Client Preview', 'Grindwell Norton', 'Preview guest', previewToken);
+  console.log('Added the Client Preview guest');
+}
 
 setSetting('seeded', '1');
 console.log('Seeded. Attendee links:');
