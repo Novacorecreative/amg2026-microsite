@@ -156,6 +156,10 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 `);
 
+// Columns added after launch (CREATE TABLE IF NOT EXISTS won't add them to an existing database).
+const hasCol = (table, col) => db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col);
+if (!hasCol('attendees', 'checked_in_at')) db.exec('ALTER TABLE attendees ADD COLUMN checked_in_at TEXT');
+
 function getSetting(key, fallback = null) {
   const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
   return row ? row.value : fallback;

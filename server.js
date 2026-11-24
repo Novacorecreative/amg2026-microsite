@@ -7,6 +7,7 @@ if (fs.existsSync(path.join(__dirname, '.env'))) process.loadEnvFile(path.join(_
 
 const express = require('express');
 const multer = require('multer');
+const QRCode = require('qrcode');
 const { db, getSetting, setSetting, tx } = require('./src/db');
 const { broadcast, channelStatus, personalLink, normalisePhone, emailHtml } = require('./src/notify');
 const live = require('./src/live');
@@ -36,6 +37,8 @@ app.use('/uploads', express.static(UPLOAD_DIR, {
   },
 }));
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
+// QR decoder for the check-in desk's camera scanner.
+app.get('/vendor/jsQR.js', (_req, res) => res.sendFile(require.resolve('jsqr/dist/jsQR.js')));
 
 const newToken = () => crypto.randomBytes(18).toString('base64url');
 const now = () => new Date().toISOString();
@@ -124,6 +127,11 @@ api.get('/me', (req, res) => {
   const { token, ...me } = req.me;
   res.json(me);
 });
+// The guest's event pass: a QR of their personal link, scanned at the check-in desk.
+api.get('/me/qr.svg', wrap(async (req, res) => {
+  res.set('Content-Type', 'image/svg+xml').set('Cache-Control', 'private, max-age=86400');
+  res.send(await QRCode.toString(personalLink(req.me), { type: 'svg', margin: 1, errorCorrectionLevel: 'M' }));
+}));
 api.patch('/me', (req, res) => {
   const b = req.body || {};
   db.prepare('UPDATE attendees SET notify_whatsapp = ?, notify_email = ?, designation = COALESCE(?, designation) WHERE id = ?').run(
@@ -921,6 +929,40 @@ admin.delete('/wheels/:id', (req, res) => {
 });
 
 // ----- media moderation -----
+// ---------- check-in desk ----------
+const deskAttendee = (a) => ({ id: a.id, name: a.name, company: a.company, designation: a.designation, phone: a.phone, checked_in_at: a.checked_in_at });
+admin.get('/checkin', (_req, res) => {
+  const all = db.prepare('SELECT * FROM attendees ORDER BY name').all();
+  res.json({
+    total: all.length,
+    checkedIn: all.filter((a) => a.checked_in_at).length,
+    attendees: all.map(deskAttendee),
+  });
+});
+// Body: { code } = the scanned QR (personal link or bare token), or { id } from a name search.
+admin.post('/checkin', (req, res) => {
+  const b = req.body || {};
+  let a;
+  if (b.id) a = db.prepare('SELECT * FROM attendees WHERE id = ?').get(Number(b.id));
+  else {
+    const raw = String(b.code || '').trim();
+    let token = raw;
+    try { token = new URL(raw).searchParams.get('t') || raw; } catch { /* not a URL: a bare token */ }
+    a = db.prepare('SELECT * FROM attendees WHERE token = ?').get(token);
+  }
+  if (!a) return bad(res, 'This QR is not an AMG 2026 pass', 404);
+  if (a.checked_in_at) return res.json({ status: 'already', attendee: deskAttendee(a) });
+  const at = now();
+  db.prepare('UPDATE attendees SET checked_in_at = ? WHERE id = ?').run(at, a.id);
+  live.sendTo(a.id, 'checkin', { checked_in_at: at });
+  res.json({ status: 'ok', attendee: deskAttendee({ ...a, checked_in_at: at }) });
+});
+admin.delete('/checkin/:id', (req, res) => {
+  db.prepare('UPDATE attendees SET checked_in_at = NULL WHERE id = ?').run(req.params.id);
+  live.sendTo(Number(req.params.id), 'checkin', { checked_in_at: null });
+  res.json({ ok: true });
+});
+
 admin.get('/media', (req, res) => {
   const status = req.query.status;
   const rows = db.prepare(`SELECT m.*, a.name AS uploader FROM media m LEFT JOIN attendees a ON a.id = m.attendee_id

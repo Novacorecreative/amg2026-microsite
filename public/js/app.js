@@ -184,7 +184,17 @@
     updateEngageDot();
     const { current, next } = nowNext();
     const live = acts.filter((a) => a.status === 'live' && !a.my_submitted_at);
+    const inAt = state.me.checked_in_at;
     view.innerHTML = `
+      <div class="card pass ${inAt ? 'in' : ''}">
+        ${inAt ? '' : `<button class="qr" id="passQr" aria-label="Show my event pass full screen"><img src="${passSrc()}" alt="Your event pass QR code"></button>`}
+        <div>
+          <div class="label">${inAt ? '✅ Checked in' : 'Your event pass'}</div>
+          <h3>${inAt ? `Welcome, ${esc(state.me.name.split(' ')[0])}!` : esc(state.me.name)}</h3>
+          <div class="muted small">${inAt ? `Checked in ${fmtTime(new Date(inAt))}. Keep this pass handy for the games.` : 'Show this QR at the registration desk. Tap it to make it bigger.'}</div>
+          ${inAt ? '<button class="btn sm secondary" id="passShow" style="margin-top:8px">Show my pass</button>' : ''}
+        </div>
+      </div>
       <div class="card">
         <div class="now-card">
           <div class="slot ${current ? 'on' : ''}">
@@ -212,6 +222,7 @@
           ${state.cfg.helpdeskPhone ? `<a href="tel:${esc(state.cfg.helpdeskPhone)}">${esc(state.cfg.helpdeskPhone)}</a> · <a href="https://wa.me/${esc(state.cfg.helpdeskPhone.replace(/\D/g, ''))}" target="_blank" rel="noopener">WhatsApp</a>` : ''}
           ${state.cfg.helpdeskEmail ? ` · <a href="mailto:${esc(state.cfg.helpdeskEmail)}">${esc(state.cfg.helpdeskEmail)}</a>` : ''}</div></div>` : ''}
       </div>`;
+    ($('#passQr') || $('#passShow')).onclick = showPass;
     if (postId) { const el = $('#post-' + postId); if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50); }
   }
 
@@ -599,6 +610,18 @@
     dot.textContent = state.unread; dot.classList.toggle('hidden', !state.unread);
   }
 
+  // ---------- event pass ----------
+  const passSrc = () => '/api/me/qr.svg?t=' + encodeURIComponent(token);
+  function showPass() {
+    const bd = document.createElement('div');
+    bd.className = 'pass-full';
+    bd.innerHTML = `<div class="inner"><img src="${passSrc()}" alt="Your event pass QR code">
+      <h2>${esc(state.me.name)}</h2><div class="muted">${esc(state.me.company || '')}</div>
+      <p class="muted small">Turn your screen brightness up. Tap anywhere to close.</p></div>`;
+    bd.onclick = () => bd.remove();
+    document.body.append(bd);
+  }
+
   // ---------- profile sheet ----------
   function openProfile() {
     const me = state.me;
@@ -657,6 +680,20 @@
       const [t, arg] = location.hash.replace(/^#/, '').split('/');
       if (t === 'engage' && (!arg || (arg === 'w' + w.id && !$('#spinBtn')?.disabled))) renderEngage(arg);
       else api('/wheels').then((x) => { state.wheels = x; updateEngageDot(); }).catch(() => {});
+    });
+    // A locked phone misses live events: catch up on check-in when the guest comes back to the page.
+    document.addEventListener('visibilitychange', async () => {
+      if (document.hidden) return;
+      const me = await api('/me').catch(() => null);
+      if (!me || me.checked_in_at === state.me.checked_in_at) return;
+      state.me.checked_in_at = me.checked_in_at;
+      if (tab() === 'feed') renderFeed();
+    });
+    es.addEventListener('checkin', (e) => {
+      state.me.checked_in_at = JSON.parse(e.data).checked_in_at;
+      $('.pass-full')?.remove();
+      if (state.me.checked_in_at) toast(`Checked in, welcome to ${state.cfg.eventName}!`, { icon: '✅' });
+      if (tab() === 'feed') renderFeed();
     });
     es.addEventListener('agenda', () => { if (tab() === 'agenda') renderAgenda(); });
     es.addEventListener('branding', (e) => { state.cfg.branding = JSON.parse(e.data); renderHeader(); });

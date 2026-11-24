@@ -84,7 +84,7 @@
     root.innerHTML = `<div class="admin">
       <aside class="side"><div id="sideBrand"><div class="sub">Organiser console</div><h1>AMG <span>2026</span></h1></div>
         <nav>${Object.entries(pages).map(([k, [i, l]]) => `<a href="#${k}" data-p="${k}">${i} ${l}${k === 'gallery' ? '<span class="count hidden" id="pendCount"></span>' : ''}</a>`).join('')}
-          <a href="/" target="_blank">↗ View microsite</a><a href="#" id="logout">⎋ Sign out</a></nav></aside>
+          <a href="/live/checkin" target="_blank">📷 Check-in desk</a><a href="/" target="_blank">↗ View microsite</a><a href="#" id="logout">⎋ Sign out</a></nav></aside>
       <section class="content" id="page"></section></div>`;
     $('#logout').onclick = (e) => { e.preventDefault(); localStorage.removeItem('amg_admin'); adminToken = null; renderLogin(); };
     sideBrand();

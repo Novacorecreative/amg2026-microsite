@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>AMG 2026 · Check-in desk</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    body { background: var(--teal-900); color: #fff; min-height: 100vh; }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 16px; }
+    header.desk { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+    header.desk img { height: 40px; background: #fff; border-radius: 8px; padding: 4px 8px; }
+    header.desk h1 { font-size: 20px; } header.desk .sub { font-size: 12px; opacity: .7; letter-spacing: .12em; text-transform: uppercase; }
+    .count { margin-left: auto; text-align: right; }
+    .count b { font-family: var(--font-display); font-size: 34px; color: var(--gold); }
+    .bar { height: 6px; background: rgba(255,255,255,.15); border-radius: 9px; margin: 4px 0 0 auto; width: 220px; overflow: hidden; }
+    .bar i { display: block; height: 100%; background: var(--gold); transition: width .4s; }
+    .grid { display: grid; gap: 16px; grid-template-columns: 1fr; }
+    @media (min-width: 900px) { .grid { grid-template-columns: 1.1fr 1fr; } }
+    .panel { background: #fff; color: var(--ink); border-radius: 16px; padding: 16px; }
+    .cam { position: relative; aspect-ratio: 4/3; background: #000; border-radius: 12px; overflow: hidden; display: grid; place-items: center; }
+    .cam video { width: 100%; height: 100%; object-fit: cover; }
+    .cam .frame { position: absolute; inset: 18%; border: 3px solid rgba(255,255,255,.85); border-radius: 18px; pointer-events: none; }
+    .cam .msg { position: absolute; color: #fff; text-align: center; padding: 20px; }
+    .result { margin-top: 12px; border-radius: 12px; padding: 16px; min-height: 92px; background: var(--sand-50); }
+    .result h2 { font-size: 24px; } .result.ok { background: #e3f6e8; } .result.ok h2 { color: #17803a; }
+    .result.already { background: #fff4dc; } .result.already h2 { color: #a26300; }
+    .result.err { background: #fde6e6; } .result.err h2 { color: #b42318; }
+    .list { max-height: 440px; overflow-y: auto; margin-top: 10px; }
+    .person { display: flex; align-items: center; gap: 10px; padding: 9px 4px; border-bottom: 1px solid var(--line); }
+    .person .who { flex: 1; min-width: 0; } .person .who b { display: block; }
+    .done { color: #17803a; font-weight: 600; font-size: 13px; white-space: nowrap; }
+    .tabs { display: flex; gap: 6px; margin-top: 10px; } .tabs button { flex: 1; }
+    .login { max-width: 360px; margin: 12vh auto; }
+  </style>
+</head>
+<body>
+  <div class="wrap" id="app"></div>
+  <script src="/js/brand.js"></script>
+  <script src="/vendor/jsQR.js"></script>
+  <script src="/live/checkin.js"></script>
+</body>
+</html>
