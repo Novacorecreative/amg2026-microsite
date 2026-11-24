@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>AMG 2026 · LED screen</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="/css/style.css">
+  <style>
+    /* Sized in vmin so it fills any LED wall, whatever its resolution. */
+    html, body { height: 100%; }
+    body { margin: 0; overflow: hidden; color: #fff; background: var(--teal-900); cursor: none; }
+    body.cursor { cursor: auto; }
+    .stage { position: fixed; inset: 0; display: flex; flex-direction: column; padding: 3.5vmin 5vmin; }
+    .head { display: flex; align-items: center; gap: 2.5vmin; }
+    .head img { height: 7vmin; background: #fff; border-radius: 1vmin; padding: .6vmin 1.2vmin; }
+    .head .ev { font-size: 2.6vmin; letter-spacing: .2em; text-transform: uppercase; opacity: .8; }
+    .head .tag { margin-left: auto; font-size: 2.4vmin; opacity: .75; }
+    main { max-width: none; margin: 0; padding: 0; z-index: auto; } /* undo the guest site's centred column */
+    main { flex: 1; display: flex; flex-direction: column; justify-content: center; min-height: 0; animation: in .6s ease; }
+    @keyframes in { from { opacity: 0; transform: translateY(2vmin); } }
+    h1.big { font-family: var(--font-display); font-size: 9vmin; line-height: 1.02; }
+    h2.q { font-family: var(--font-display); font-size: 5.6vmin; line-height: 1.1; margin-bottom: 4vmin; }
+    .kicker { font-size: 2.6vmin; letter-spacing: .18em; text-transform: uppercase; color: var(--gold); font-weight: 700; margin-bottom: 1.6vmin; }
+    .muted2 { opacity: .7; font-size: 2.8vmin; }
+    .title-art { max-height: 42vmin; max-width: 80vw; display: block; }
+    .nn { display: grid; grid-template-columns: 1fr 1fr; gap: 3vmin; margin-top: 5vmin; }
+    .nn > div { background: rgba(255,255,255,.08); border-radius: 2vmin; padding: 3vmin; }
+    .nn h3 { font-size: 4vmin; margin-top: 1vmin; } .nn .when { opacity: .7; font-size: 2.6vmin; margin-top: 1vmin; }
+    .bars { display: flex; flex-direction: column; gap: 2.4vmin; }
+    .opt .lab { display: flex; justify-content: space-between; font-size: 3.4vmin; font-weight: 600; margin-bottom: .8vmin; }
+    .opt .track { height: 5vmin; background: rgba(255,255,255,.1); border-radius: 1.2vmin; overflow: hidden; }
+    .opt .track i { display: block; height: 100%; width: 0; background: var(--teal-500); border-radius: 1.2vmin; transition: width 1s cubic-bezier(.2,.8,.2,1); }
+    .opt.top .track i { background: var(--gold); } .opt.right .track i { background: #2fbf6a; }
+    .opt .pct { font-family: var(--font-display); }
+    .wall { display: flex; flex-wrap: wrap; gap: 1.6vmin; }
+    .wall span { background: rgba(255,255,255,.1); border-radius: 99vmin; padding: 1.2vmin 2.6vmin; font-size: 3vmin; }
+    .rank { display: grid; grid-template-columns: 7vmin 1fr auto; align-items: center; gap: 2vmin; padding: 1.3vmin 2vmin; border-radius: 1.4vmin; font-size: 3.2vmin; }
+    .rank:nth-child(odd) { background: rgba(255,255,255,.06); }
+    .rank .n { font-family: var(--font-display); font-size: 4vmin; color: var(--gold); text-align: center; }
+    .rank .co { opacity: .65; font-size: 2.4vmin; } .rank .pts { font-family: var(--font-display); font-size: 4vmin; }
+    .rank.first { background: color-mix(in srgb, var(--gold) 22%, transparent); }
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0 4vmin; }
+    .count { font-family: var(--font-display); font-size: 24vmin; line-height: .9; color: var(--gold); }
+    .count small { font-size: 7vmin; color: #fff; opacity: .7; }
+    .prog { height: 2.4vmin; background: rgba(255,255,255,.12); border-radius: 9vmin; margin: 3vmin 0 4vmin; overflow: hidden; }
+    .prog i { display: block; height: 100%; background: var(--gold); transition: width 1s; }
+    .names { display: flex; flex-wrap: wrap; gap: 1.6vmin; }
+    .names span { background: rgba(255,255,255,.1); border-radius: 1.4vmin; padding: 1.2vmin 2.2vmin; font-size: 3vmin; }
+    .names span:first-child { background: var(--coral); color: var(--on-accent); }
+    .login { max-width: 360px; margin: 18vh auto; color: var(--ink); cursor: auto; }
+    #fs { position: fixed; right: 2vmin; bottom: 2vmin; z-index: 5; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <button class="btn sm secondary hidden" id="fs">⛶ Full screen</button>
+  <script src="/js/brand.js"></script>
+  <script src="/live/screen.js"></script>
+</body>
+</html>

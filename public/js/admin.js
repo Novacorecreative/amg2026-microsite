@@ -59,7 +59,7 @@
   const pages = {
     dashboard: ['📊', 'Dashboard'], attendees: ['👥', 'Attendees'], updates: ['📣', 'Updates & videos'],
     engage: ['🏆', 'Quizzes & polls'], wheels: ['🎡', 'Spin the wheel'], agenda: ['🗓️', 'Agenda'], gallery: ['📸', 'Gallery'], broadcast: ['📲', 'Broadcast'],
-    branding: ['🎨', 'Branding'],
+    branding: ['🎨', 'Branding'], screen: ['📺', 'LED screen'],
   };
 
   // ---------- brand ----------
@@ -478,6 +478,33 @@
       </table></div>`;
   }
 
+  // ---------- LED screen ----------
+  async function renderScreen() {
+    const [cur, acts, wheels] = await Promise.all([api('/screen'), api('/activities'), api('/wheels')]);
+    const on = (mode, id = null) => cur.mode === mode && (cur.id ?? null) === id;
+    const btn = (label, mode, id = null) => on(mode, id)
+      ? '<span class="pill live">On screen</span>'
+      : `<button class="btn sm" data-mode="${mode}" ${id ? `data-id="${id}"` : ''}>${label}</button>`;
+    const shown = acts.filter((a) => a.status !== 'draft');
+    page().innerHTML = `<h2 class="page">LED screen</h2>
+      <p class="muted" style="margin-top:-6px">Open the screen page on the laptop connected to the LED wall, sign in once and press Full screen. Whatever you pick here appears on it within 2 seconds, and results update live as people vote.</p>
+      <div class="row wrap" style="margin-bottom:14px"><a class="btn secondary" href="/live/screen" target="_blank">📺 Open the screen page</a></div>
+      <div class="card tablewrap"><table>
+        <tr><td><b>Welcome</b><div class="muted small">Event artwork with what's on now and next</div></td><td>${btn('Show', 'welcome')}</td></tr>
+        <tr><td><b>Arrivals</b><div class="muted small">Live check-in count and the latest names</div></td><td>${btn('Show', 'arrivals')}</td></tr>
+        <tr><td><b>Overall leaderboard</b><div class="muted small">Top 10 across every quiz</div></td><td>${btn('Show', 'leaderboard')}</td></tr>
+        ${shown.map((a) => `<tr><td><b>${a.kind === 'quiz' ? '🏆' : '📊'} ${esc(a.title)}</b> <span class="pill ${a.status === 'live' ? 'live' : ''}">${a.status}</span>
+          <div class="muted small">${a.kind === 'quiz' ? (a.status === 'closed' ? 'Shows the winners' : 'Shows how many are playing; the winners appear once you close it') : 'Live vote results'} · ${a.participants} taken part</div></td>
+          <td>${btn('Show results', 'activity', a.id)}</td></tr>`).join('')}
+        ${wheels.filter((w) => w.status !== 'draft').map((w) => `<tr><td><b>🎡 ${esc(w.title)}</b><div class="muted small">Latest prize winners · ${w.spins} spins</div></td><td>${btn('Show winners', 'wheel', w.id)}</td></tr>`).join('')}
+      </table></div>
+      ${shown.length ? '' : '<p class="muted small">Quizzes and polls appear here once they are live.</p>'}`;
+    $$('[data-mode]').forEach((b) => (b.onclick = run(async () => {
+      await api('/screen', { method: 'POST', body: { mode: b.dataset.mode, id: b.dataset.id ? Number(b.dataset.id) : null } });
+      toast('On the LED screen now'); renderScreen();
+    })));
+  }
+
   async function renderLeaderboard() {
     const rows = await api('/leaderboard');
     page().innerHTML = `<a href="#engage" class="small">← Back</a><h2 class="page" style="margin-top:8px">Overall leaderboard</h2>
@@ -784,6 +811,6 @@
     refreshEmail();
   }
 
-  const renderers = { dashboard: renderDashboard, attendees: renderAttendees, updates: renderUpdates, engage: renderEngage, agenda: renderAgenda, gallery: renderGallery, broadcast: renderBroadcast, branding: renderBranding, wheels: renderWheels };
+  const renderers = { dashboard: renderDashboard, attendees: renderAttendees, updates: renderUpdates, engage: renderEngage, agenda: renderAgenda, gallery: renderGallery, broadcast: renderBroadcast, branding: renderBranding, wheels: renderWheels, screen: renderScreen };
   loadBrand().catch(() => {}).finally(route);
 })();

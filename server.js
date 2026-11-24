@@ -963,6 +963,65 @@ admin.delete('/checkin/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- LED big screen ----------
+// Organisers pick what the screen shows; the screen asks for it every couple of seconds.
+const SCREEN_MODES = ['welcome', 'arrivals', 'activity', 'leaderboard', 'wheel'];
+const getScreen = () => JSON.parse(getSetting('screen', '{"mode":"welcome"}'));
+function screenData({ mode, id }) {
+  if (mode === 'arrivals') {
+    return {
+      total: db.prepare('SELECT COUNT(*) n FROM attendees').get().n,
+      checkedIn: db.prepare('SELECT COUNT(*) n FROM attendees WHERE checked_in_at IS NOT NULL').get().n,
+      recent: db.prepare('SELECT name, company FROM attendees WHERE checked_in_at IS NOT NULL ORDER BY checked_in_at DESC LIMIT 8').all(),
+    };
+  }
+  if (mode === 'activity') {
+    const r = resultsFor(id);
+    if (!r) return null;
+    // A quiz's answers and ranking stay hidden until it is closed, so the screen can't give answers away.
+    const reveal = r.activity.kind === 'poll' || r.activity.status === 'closed';
+    return {
+      kind: r.activity.kind, title: r.activity.title, status: r.activity.status,
+      participants: r.participants, totalAttendees: r.totalAttendees, reveal,
+      questions: reveal ? r.questions.map((q) => ({
+        text: q.text, qtype: q.qtype, options: q.options, counts: q.counts, percents: q.percents,
+        responses: q.responses, correct_index: q.correct_index, textAnswers: (q.textAnswers || []).slice(-12),
+      })) : [],
+      rankings: reveal ? r.rankings.slice(0, 10).map(({ rank, name, company, score, duration_ms }) => ({ rank, name, company, score, duration_ms })) : [],
+      maxScore: r.maxScore,
+    };
+  }
+  if (mode === 'leaderboard') return { rows: leaderboard().slice(0, 10).map(({ rank, name, company, points }) => ({ rank, name, company, points })) };
+  if (mode === 'wheel') {
+    const w = db.prepare('SELECT id, title FROM wheels WHERE id = ?').get(id);
+    if (!w) return null;
+    const winners = db.prepare(`SELECT s.label, a.name, a.company FROM wheel_spins s JOIN attendees a ON a.id = s.attendee_id
+      WHERE s.wheel_id = ? AND s.win = 1 ORDER BY s.spun_at DESC, s.id DESC LIMIT 10`).all(w.id);
+    return { title: w.title, winners, spins: db.prepare('SELECT COUNT(*) n FROM wheel_spins WHERE wheel_id = ?').get(w.id).n };
+  }
+  // welcome: what's on now and next, in event time (IST)
+  const ist = new Date(Date.now() + 5.5 * 3600e3).toISOString();
+  const day = ist.slice(0, 10), hm = ist.slice(11, 16);
+  const sessions = db.prepare('SELECT title, day, start_time, end_time, location FROM sessions ORDER BY day, start_time').all();
+  return {
+    current: sessions.find((s) => s.day === day && s.start_time <= hm && hm < s.end_time) || null,
+    next: sessions.find((s) => s.day > day || (s.day === day && s.start_time > hm)) || null,
+  };
+}
+admin.get('/screen', (_req, res) => {
+  const s = getScreen();
+  const data = screenData(s);
+  res.json(data ? { ...s, data } : { mode: 'welcome', data: screenData({ mode: 'welcome' }) }); // item deleted: fall back
+});
+admin.post('/screen', (req, res) => {
+  const mode = String(req.body?.mode || '');
+  if (!SCREEN_MODES.includes(mode)) return bad(res, 'Unknown screen mode');
+  const s = { mode, id: req.body.id ? Number(req.body.id) : null };
+  if (!screenData(s)) return bad(res, 'That item no longer exists', 404);
+  setSetting('screen', JSON.stringify(s));
+  res.json(s);
+});
+
 admin.get('/media', (req, res) => {
   const status = req.query.status;
   const rows = db.prepare(`SELECT m.*, a.name AS uploader FROM media m LEFT JOIN attendees a ON a.id = m.attendee_id
