@@ -150,6 +150,32 @@ CREATE TABLE IF NOT EXISTS wheel_spins (
   UNIQUE (wheel_id, attendee_id)
 );
 
+CREATE TABLE IF NOT EXISTS draws (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,                 -- the prize, e.g. "Weekend for two in Goa"
+  winners_count INTEGER NOT NULL DEFAULT 1,
+  checked_in_only INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS draw_winners (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  draw_id INTEGER NOT NULL REFERENCES draws(id) ON DELETE CASCADE,
+  attendee_id INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'won' CHECK (status IN ('won','absent')),
+  drawn_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE (draw_id, attendee_id)
+);
+
+CREATE TABLE IF NOT EXISTS spotlights (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  from_id INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
+  to_id INTEGER NOT NULL REFERENCES attendees(id) ON DELETE CASCADE,
+  message TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT

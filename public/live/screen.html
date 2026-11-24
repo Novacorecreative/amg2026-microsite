@@ -49,6 +49,16 @@
     .names { display: flex; flex-wrap: wrap; gap: 1.6vmin; }
     .names span { background: rgba(255,255,255,.1); border-radius: 1.4vmin; padding: 1.2vmin 2.2vmin; font-size: 3vmin; }
     .names span:first-child { background: var(--coral); color: var(--on-accent); }
+    .slot { font-family: var(--font-display); font-size: 10vmin; line-height: 1.1; min-height: 12vmin; margin: 5vmin 0 4vmin; color: var(--gold); }
+    .slot:empty { min-height: 0; margin: 3vmin 0 0; }
+    .slot .landed { display: inline-block; animation: pop .6s cubic-bezier(.2,1.6,.4,1); }
+    @keyframes pop { from { transform: scale(.6); opacity: 0; } }
+    .names.win span { font-size: 3.6vmin; background: var(--gold); color: var(--on-highlight); }
+    .names.win small { opacity: .7; font-size: 2.4vmin; }
+    .spot { display: grid; grid-template-columns: 1fr; gap: 6vmin; align-items: center; }
+    .spot:has(.most) { grid-template-columns: 2fr 1fr; }
+    .quote { font-family: var(--font-display); font-size: 6vmin; line-height: 1.2; }
+    .most .rank { grid-template-columns: 6vmin 1fr auto; }
     .login { max-width: 360px; margin: 18vh auto; color: var(--ink); cursor: auto; }
     #fs { position: fixed; right: 2vmin; bottom: 2vmin; z-index: 5; }
   </style>

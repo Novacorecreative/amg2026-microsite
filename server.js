@@ -377,6 +377,27 @@ api.get('/people', (req, res) => {
     .map((p) => ({ ...p, online: online.has(p.id) })));
 });
 
+// ----- Star Spotlight: guests appreciate each other; organisers approve before anything is shown -----
+const STAR_LIMIT = 10; // per guest, so nobody floods the wall
+api.get('/stars', (req, res) => {
+  res.json({
+    received: db.prepare(`SELECT s.message, s.created_at, a.name AS from_name FROM spotlights s JOIN attendees a ON a.id = s.from_id
+      WHERE s.to_id = ? AND s.status = 'approved' ORDER BY s.id DESC`).all(req.me.id),
+    sent: db.prepare(`SELECT s.message, s.status, s.created_at, a.name AS to_name FROM spotlights s JOIN attendees a ON a.id = s.to_id
+      WHERE s.from_id = ? ORDER BY s.id DESC`).all(req.me.id),
+    limit: STAR_LIMIT,
+  });
+});
+api.post('/stars', (req, res) => {
+  const toId = Number(req.body?.to_id);
+  const message = String(req.body?.message || '').trim();
+  if (!toId || toId === req.me.id || !db.prepare('SELECT 1 FROM attendees WHERE id = ?').get(toId)) return bad(res, 'Choose a colleague from the list.');
+  if (message.length < 3 || message.length > 200) return bad(res, 'Write a message of up to 200 characters.');
+  if (db.prepare('SELECT COUNT(*) n FROM spotlights WHERE from_id = ?').get(req.me.id).n >= STAR_LIMIT) return bad(res, `You can send up to ${STAR_LIMIT} stars.`);
+  db.prepare('INSERT INTO spotlights(from_id, to_id, message) VALUES (?,?,?)').run(req.me.id, toId, message);
+  res.json({ ok: true });
+});
+
 api.get('/conversations', (req, res) => {
   const me = req.me.id;
   const rows = db.prepare(`
@@ -963,9 +984,85 @@ admin.delete('/checkin/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- lucky draw ----------
+// Winners are picked by the server among guests who are checked in (unless the draw says otherwise)
+// and haven't already won a draw, so nobody takes home two prizes.
+function drawWinners(drawId) {
+  return db.prepare(`SELECT w.attendee_id, w.status, w.drawn_at, a.name, a.company, a.phone FROM draw_winners w
+    JOIN attendees a ON a.id = w.attendee_id WHERE w.draw_id = ? ORDER BY w.id`).all(drawId);
+}
+function drawPool(d) {
+  return db.prepare(`SELECT id, name FROM attendees a
+    WHERE (? = 0 OR a.checked_in_at IS NOT NULL)
+      AND NOT EXISTS (SELECT 1 FROM draw_winners w WHERE w.attendee_id = a.id AND (w.status = 'won' OR w.draw_id = ?))`).all(d.checked_in_only, d.id);
+}
+admin.get('/draws', (_req, res) => {
+  res.json(db.prepare('SELECT * FROM draws ORDER BY id DESC').all().map((d) => ({ ...d, winners: drawWinners(d.id), pool: drawPool(d).length })));
+});
+admin.post('/draws', (req, res) => {
+  const b = req.body || {};
+  const title = String(b.title || '').trim().slice(0, 80);
+  const count = Number(b.winners_count);
+  if (!title) return bad(res, 'Give the draw a name, e.g. the prize');
+  if (!Number.isInteger(count) || count < 1 || count > 50) return bad(res, 'Number of winners must be 1–50');
+  const info = db.prepare('INSERT INTO draws(title, winners_count, checked_in_only) VALUES (?,?,?)').run(title, count, b.checked_in_only === false ? 0 : 1);
+  res.json({ id: Number(info.lastInsertRowid) });
+});
+// Fills the empty winner slots (all of them the first time; a replacement after someone is marked absent).
+admin.post('/draws/:id/draw', (req, res) => {
+  const d = db.prepare('SELECT * FROM draws WHERE id = ?').get(req.params.id);
+  if (!d) return bad(res, 'Not found', 404);
+  const won = drawWinners(d.id).filter((w) => w.status === 'won').length;
+  const pool = drawPool(d);
+  const need = Math.min(d.winners_count - won, pool.length);
+  if (d.winners_count - won <= 0) return bad(res, 'All winners are already drawn');
+  if (!pool.length) return bad(res, d.checked_in_only ? 'Nobody left to draw: everyone checked in has already won' : 'Nobody left to draw');
+  const picked = [];
+  tx(() => {
+    for (let i = 0; i < need; i++) {
+      const [p] = pool.splice(crypto.randomInt(pool.length), 1);
+      db.prepare('INSERT INTO draw_winners(draw_id, attendee_id) VALUES (?,?)').run(d.id, p.id);
+      picked.push(p);
+    }
+  });
+  for (const p of picked) live.sendTo(p.id, 'draw', { title: d.title });
+  res.json({ picked: picked.map((p) => p.name) });
+});
+admin.post('/draws/:id/absent/:attendeeId', (req, res) => {
+  db.prepare("UPDATE draw_winners SET status = 'absent' WHERE draw_id = ? AND attendee_id = ?").run(req.params.id, req.params.attendeeId);
+  res.json({ ok: true });
+});
+admin.delete('/draws/:id', (req, res) => {
+  db.prepare('DELETE FROM draws WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ---------- Star Spotlight moderation ----------
+admin.get('/stars', (_req, res) => {
+  res.json(db.prepare(`SELECT s.*, f.name AS from_name, t.name AS to_name FROM spotlights s
+    JOIN attendees f ON f.id = s.from_id JOIN attendees t ON t.id = s.to_id ORDER BY s.id DESC`).all());
+});
+admin.post('/stars/status', (req, res) => {
+  const status = req.body?.status;
+  const ids = (req.body?.ids || []).map(Number).filter(Boolean);
+  if (!['approved', 'rejected', 'pending'].includes(status) || !ids.length) return bad(res, 'Nothing to update');
+  tx(() => {
+    for (const id of ids) {
+      const s = db.prepare('SELECT * FROM spotlights WHERE id = ?').get(id);
+      if (!s || s.status === status) continue;
+      db.prepare('UPDATE spotlights SET status = ? WHERE id = ?').run(status, id);
+      if (status === 'approved') {
+        const from = db.prepare('SELECT name FROM attendees WHERE id = ?').get(s.from_id);
+        live.sendTo(s.to_id, 'star', { from: from?.name });
+      }
+    }
+  });
+  res.json({ ok: true });
+});
+
 // ---------- LED big screen ----------
 // Organisers pick what the screen shows; the screen asks for it every couple of seconds.
-const SCREEN_MODES = ['welcome', 'arrivals', 'activity', 'leaderboard', 'wheel'];
+const SCREEN_MODES = ['welcome', 'arrivals', 'activity', 'leaderboard', 'wheel', 'draw', 'spotlight'];
 const getScreen = () => JSON.parse(getSetting('screen', '{"mode":"welcome"}'));
 function screenData({ mode, id }) {
   if (mode === 'arrivals') {
@@ -998,6 +1095,24 @@ function screenData({ mode, id }) {
     const winners = db.prepare(`SELECT s.label, a.name, a.company FROM wheel_spins s JOIN attendees a ON a.id = s.attendee_id
       WHERE s.wheel_id = ? AND s.win = 1 ORDER BY s.spun_at DESC, s.id DESC LIMIT 10`).all(w.id);
     return { title: w.title, winners, spins: db.prepare('SELECT COUNT(*) n FROM wheel_spins WHERE wheel_id = ?').get(w.id).n };
+  }
+  if (mode === 'draw') {
+    const d = db.prepare('SELECT * FROM draws WHERE id = ?').get(id);
+    if (!d) return null;
+    // Names to shuffle through on screen before each winner lands (stable order, so the screen doesn't redraw every poll).
+    const pool = db.prepare('SELECT name FROM attendees WHERE (? = 0 OR checked_in_at IS NOT NULL) ORDER BY id LIMIT 200').all(d.checked_in_only).map((p) => p.name);
+    return {
+      title: d.title, winnersCount: d.winners_count, pool,
+      winners: drawWinners(d.id).filter((w) => w.status === 'won').map(({ name, company }) => ({ name, company })),
+    };
+  }
+  if (mode === 'spotlight') {
+    return {
+      messages: db.prepare(`SELECT s.id, s.message, f.name AS from_name, t.name AS to_name, t.company AS to_company FROM spotlights s
+        JOIN attendees f ON f.id = s.from_id JOIN attendees t ON t.id = s.to_id WHERE s.status = 'approved' ORDER BY s.id DESC LIMIT 30`).all(),
+      top: db.prepare(`SELECT t.name, COUNT(*) AS stars FROM spotlights s JOIN attendees t ON t.id = s.to_id
+        WHERE s.status = 'approved' GROUP BY t.id ORDER BY stars DESC, MIN(s.id) LIMIT 5`).all(),
+    };
   }
   // welcome: what's on now and next, in event time (IST)
   const ist = new Date(Date.now() + 5.5 * 3600e3).toISOString();

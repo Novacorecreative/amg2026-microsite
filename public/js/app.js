@@ -270,6 +270,7 @@
   }
 
   async function renderEngage(id) {
+    if (id === 'stars') return renderStars();
     if (id && id.startsWith('w')) return renderWheel(Number(id.slice(1)));
     if (id) return renderActivity(Number(id));
     const [acts, lb, wheels] = await Promise.all([api('/activities'), api('/leaderboard'), api('/wheels')]);
@@ -299,11 +300,47 @@
     view.innerHTML = `
       <div class="card"><h2 style="font-size:20px">Games, quizzes & polls</h2>
         <p class="muted small" style="margin:6px 0 0">Quizzes: highest score wins, ties go to whoever answered fastest. Polls: see how everyone voted right after you vote. Wheels: one free spin each.</p></div>
+      <a class="banner" href="#engage/stars">
+        <div class="icon">⭐</div>
+        <div><div class="small" style="opacity:.85">Star Spotlight</div><b>Appreciate a colleague</b></div>
+        <span class="go">Send →</span>
+      </a>
       <div class="section-title"><h2>Live now</h2></div>
       ${live.length ? `<div class="act-list">${live.join('')}</div>` : '<div class="card empty"><div class="em">⏳</div>Nothing live right now — we’ll notify you when the next one starts.</div>'}
       ${lb.visible && lb.rows.length ? `<div class="section-title"><h2>Leaderboard</h2></div>
         <div class="card">${lb.rows.map((r) => `<div class="leader"><div class="rank">${r.rank}</div><div style="flex:1"><b>${esc(r.name)}</b><div class="muted small">${esc(r.company || '')}</div></div><b>${r.points} pts</b></div>`).join('')}</div>` : ''}
       ${closed.length ? `<div class="section-title"><h2>Earlier</h2></div><div class="act-list">${closed.join('')}</div>` : ''}`;
+  }
+
+  // ---------- Star Spotlight ----------
+  async function renderStars() {
+    const [mine, people] = await Promise.all([api('/stars'), api('/people')]);
+    const left = mine.limit - mine.sent.length;
+    const status = { pending: 'Waiting for approval', approved: '✓ Shown', rejected: 'Not shown' };
+    view.innerHTML = `<a href="#engage" class="small">← Back</a>
+      <div class="card stack" style="margin-top:8px">
+        <h2 style="font-size:20px">⭐ Star Spotlight</h2>
+        <p class="muted small" style="margin:0">Thank a colleague who made a difference this year. Once the organisers approve it, they’ll see your message and it may appear on the big screen.</p>
+        ${left > 0 ? `<form id="starForm" class="stack">
+          <label class="field">Colleague<input class="input" id="starTo" list="starPeople" placeholder="Start typing a name" autocomplete="off" required></label>
+          <datalist id="starPeople">${people.map((p) => `<option value="${esc(p.name)}">${esc(p.company || '')}</option>`).join('')}</datalist>
+          <label class="field">Your message<textarea class="input" id="starMsg" rows="3" maxlength="200" required placeholder="e.g. Thank you for always going the extra mile for our dealers!"></textarea></label>
+          <div class="row"><span class="muted small">${left} of ${mine.limit} stars left</span><span class="spacer"></span><button class="btn">Send star</button></div>
+        </form>` : `<div class="muted">You’ve sent all ${mine.limit} of your stars. Thank you!</div>`}
+      </div>
+      <div class="section-title"><h2>Stars for you</h2></div>
+      ${mine.received.length ? mine.received.map((s) => `<div class="card" style="margin-bottom:10px"><div>“${esc(s.message)}”</div><div class="muted small" style="margin-top:6px">— ${esc(s.from_name)}</div></div>`).join('') : '<div class="card empty"><div class="em">🌟</div>Appreciation from colleagues will appear here.</div>'}
+      ${mine.sent.length ? `<div class="section-title"><h2>You sent</h2></div><div class="card">${mine.sent.map((s) => `<div class="leader"><div style="flex:1"><b>${esc(s.to_name)}</b><div class="muted small">${esc(s.message)}</div></div><span class="muted small">${status[s.status]}</span></div>`).join('')}</div>` : ''}`;
+    const form = $('#starForm');
+    if (form) form.onsubmit = async (e) => {
+      e.preventDefault();
+      const name = $('#starTo').value.trim().toLowerCase();
+      const to = people.find((p) => p.name.toLowerCase() === name); // shortcut: two guests with the same name get the first; add company to the pick if that happens
+      if (!to) return toast('Pick your colleague from the list of names', { error: true });
+      await api('/stars', { method: 'POST', body: { to_id: to.id, message: $('#starMsg').value } });
+      toast('Star sent! It will be shown once approved.', { icon: '⭐' });
+      renderStars();
+    };
   }
 
   // ---------- spin the wheel ----------
@@ -689,6 +726,11 @@
       state.me.checked_in_at = me.checked_in_at;
       if (tab() === 'feed') renderFeed();
     });
+    es.addEventListener('star', (e) => {
+      toast(`${JSON.parse(e.data).from || 'A colleague'} sent you a Star Spotlight!`, { icon: '⭐', href: '#engage/stars' });
+      if (location.hash === '#engage/stars') renderStars();
+    });
+    es.addEventListener('draw', (e) => toast(`You won the lucky draw: ${JSON.parse(e.data).title}! Please come to the stage or help desk.`, { icon: '🎉' }));
     es.addEventListener('checkin', (e) => {
       state.me.checked_in_at = JSON.parse(e.data).checked_in_at;
       $('.pass-full')?.remove();

@@ -50,6 +50,23 @@
       return `<div class="kicker">${esc(d.title)} · ${d.spins} spins</div><h2 class="q">Latest winners</h2>
         ${d.winners.length ? `<div class="cols">${d.winners.map((w) => `<div class="rank"><span class="n">🎁</span><div><b>${esc(w.name)}</b><div class="co">${esc(w.company || '')}</div></div><span class="pts">${esc(w.label)}</span></div>`).join('')}</div>` : '<div class="muted2">Spin the wheel on your phone. Winners appear here!</div>'}`;
     },
+    draw(d) {
+      const shownW = d.winners.slice(0, revealed);
+      return `<div class="kicker">Lucky draw · ${d.winnersCount} winner${d.winnersCount === 1 ? '' : 's'}</div><h1 class="big">🎁 ${esc(d.title)}</h1>
+        <div class="slot" id="slot">${revealed < d.winners.length ? '' : shownW.length < d.winnersCount ? 'Who will it be?' : ''}</div>
+        <div class="names win">${shownW.map((w) => `<span>🏆 ${esc(w.name)}${w.company ? ` <small>${esc(w.company)}</small>` : ''}</span>`).join('')}</div>`;
+    },
+    spotlight(d) {
+      const m = d.messages[qIndex % Math.max(1, d.messages.length)];
+      return `<div class="spot"><div>
+          <div class="kicker">⭐ Star Spotlight</div>
+          ${m ? `<h2 class="q" style="margin-bottom:2vmin">To ${esc(m.to_name)}${m.to_company ? ` <span class="co">· ${esc(m.to_company)}</span>` : ''}</h2>
+            <div class="quote">“${esc(m.message)}”</div><div class="muted2" style="margin-top:3vmin">— ${esc(m.from_name)}</div>`
+            : '<h1 class="big">Appreciate a colleague</h1><div class="muted2" style="margin-top:2vmin">Open the microsite → Play → Star Spotlight</div>'}
+        </div>
+        ${d.top.length ? `<div class="most"><div class="kicker">Most appreciated</div>${d.top.map((t, i) => `<div class="rank"><span class="n">${i + 1}</span><b>${esc(t.name)}</b><span class="pts">${t.stars}⭐</span></div>`).join('')}</div>` : ''}
+      </div>`;
+    },
     activity(d) {
       const played = `${d.participants} of ${d.totalAttendees} have ${d.kind === 'quiz' ? 'played' : 'voted'}`;
       if (!d.reveal) {
@@ -96,6 +113,30 @@
     growBars();
   }
 
+  // ---------- lucky draw reveal ----------
+  // Winners already drawn when the screen opens are shown straight away; new ones get the shuffle.
+  let revealed = 0, drawId = null, revealing = false;
+  async function revealNext() {
+    if (revealing || current?.mode !== 'draw') return;
+    const d = current.data;
+    if (revealed >= d.winners.length) return;
+    revealing = true;
+    const slot = $('#slot');
+    const names = d.pool.length ? d.pool : [d.winners[revealed].name];
+    const winner = d.winners[revealed];
+    // Spin through names, slowing down, then land on the winner.
+    for (let delay = 50; delay < 420; delay *= 1.09) {
+      slot.textContent = names[Math.floor(Math.random() * names.length)];
+      await new Promise((r) => setTimeout(r, delay));
+    }
+    slot.innerHTML = `<span class="landed">🎉 ${esc(winner.name)}</span>`;
+    await new Promise((r) => setTimeout(r, 3500));
+    revealed++;
+    revealing = false;
+    draw(current);
+    revealNext();
+  }
+
   let current;
   async function poll() {
     try {
@@ -105,16 +146,22 @@
       const json = JSON.stringify(s);
       if (json !== lastJson) {
         if (!current || current.mode !== s.mode || current.id !== s.id) qIndex = 0;
-        lastJson = json; current = s; draw(s);
+        if (s.mode === 'draw' && drawId !== s.id) { drawId = s.id; revealed = s.data.winners.length; }
+        if (s.mode === 'draw' && s.data.winners.length < revealed) revealed = s.data.winners.length; // a winner was marked absent
+        lastJson = json; current = s;
+        if (!revealing) { draw(s); revealNext(); }
       }
     } catch { /* venue Wi-Fi blip: keep showing the last screen and try again */ }
     setTimeout(poll, 2000); // shortcut: polls every 2s; switch to server push if the screen ever needs sub-second updates
   }
 
-  // A poll with several questions shows each one for 12 seconds.
+  // A poll with several questions shows each one for 12 seconds; Star Spotlight shows each message for 10.
   qTimer = setInterval(() => {
     if (current?.mode === 'activity' && current.data.kind === 'poll' && current.data.questions.length > 1) { qIndex++; draw(current); }
   }, 12000);
+  setInterval(() => {
+    if (current?.mode === 'spotlight' && current.data.messages.length > 1) { qIndex++; draw(current); }
+  }, 10000);
 
   function start() { lastJson = ''; lastKey = ''; poll(); }
 

@@ -58,7 +58,7 @@
   // ---------- shell ----------
   const pages = {
     dashboard: ['📊', 'Dashboard'], attendees: ['👥', 'Attendees'], updates: ['📣', 'Updates & videos'],
-    engage: ['🏆', 'Quizzes & polls'], wheels: ['🎡', 'Spin the wheel'], agenda: ['🗓️', 'Agenda'], gallery: ['📸', 'Gallery'], broadcast: ['📲', 'Broadcast'],
+    engage: ['🏆', 'Quizzes & polls'], wheels: ['🎡', 'Spin the wheel'], draws: ['🎁', 'Lucky draw'], stars: ['⭐', 'Star Spotlight'], agenda: ['🗓️', 'Agenda'], gallery: ['📸', 'Gallery'], broadcast: ['📲', 'Broadcast'],
     branding: ['🎨', 'Branding'], screen: ['📺', 'LED screen'],
   };
 
@@ -478,9 +478,75 @@
       </table></div>`;
   }
 
+  // ---------- lucky draw ----------
+  async function renderDraws() {
+    const draws = await api('/draws');
+    const showOnScreen = (id) => api('/screen', { method: 'POST', body: { mode: 'draw', id } });
+    page().innerHTML = `<h2 class="page">Lucky draw</h2>
+      <p class="muted" style="margin-top:-6px">The server picks winners at random. Only checked-in guests can win (unless you untick it), and nobody can win two draws. Put the draw on the LED screen first, then press Draw: the names shuffle on the wall and land on the winner.</p>
+      <form class="card stack" id="dForm" style="margin-bottom:14px"><h3>New draw</h3>
+        <div class="formgrid">
+          <label class="field">Prize / draw name<input class="input" name="title" required maxlength="80" placeholder="e.g. Weekend for two in Goa"></label>
+          <label class="field">Number of winners<input class="input" name="winners_count" type="number" min="1" max="50" value="1" required></label>
+        </div>
+        <label class="row small"><input type="checkbox" name="checked_in_only" checked style="width:18px;height:18px"> Only guests who have checked in at the event</label>
+        <div class="row"><span class="spacer"></span><button class="btn">Create draw</button></div></form>
+      ${draws.map((d) => {
+        const won = d.winners.filter((w) => w.status === 'won');
+        const left = d.winners_count - won.length;
+        return `<div class="card stack" style="margin-bottom:12px">
+          <div class="row wrap"><h3>🎁 ${esc(d.title)}</h3><span class="muted small">${won.length}/${d.winners_count} drawn · ${d.pool} can still win${d.checked_in_only ? ' (checked in)' : ''}</span><span class="spacer"></span>
+            <button class="btn sm secondary" data-screen="${d.id}">📺 Show on LED</button>
+            ${left > 0 ? `<button class="btn sm" data-draw="${d.id}">${won.length ? `Draw ${left} more` : 'Draw'}</button>` : ''}
+            <button class="btn sm ghost" data-del="${d.id}" title="Delete">🗑</button></div>
+          ${d.winners.length ? `<table><tr><th>Winner</th><th>Company</th><th>Phone</th><th></th></tr>${d.winners.map((w) => `<tr style="${w.status === 'absent' ? 'opacity:.5;text-decoration:line-through' : ''}">
+            <td><b>${esc(w.name)}</b></td><td>${esc(w.company || '')}</td><td>${esc(w.phone || '')}</td>
+            <td>${w.status === 'won' ? `<button class="btn sm ghost" data-absent="${d.id}/${w.attendee_id}">Not here: redraw</button>` : 'absent'}</td></tr>`).join('')}</table>` : ''}
+        </div>`;
+      }).join('') || '<div class="card muted">No draws yet.</div>'}`;
+    $('#dForm').onsubmit = run(async (e) => {
+      e.preventDefault();
+      const f = e.target;
+      const { id } = await api('/draws', { method: 'POST', body: { title: f.title.value, winners_count: Number(f.winners_count.value), checked_in_only: f.checked_in_only.checked } });
+      if (confirm('Draw created. Put it on the LED screen now?')) await showOnScreen(id);
+      renderDraws();
+    });
+    $$('[data-screen]').forEach((b) => (b.onclick = run(async () => { await showOnScreen(Number(b.dataset.screen)); toast('On the LED screen now'); })));
+    $$('[data-draw]').forEach((b) => (b.onclick = run(async () => {
+      const out = await api(`/draws/${b.dataset.draw}/draw`, { method: 'POST' });
+      toast('Winner: ' + out.picked.join(', ')); renderDraws();
+    })));
+    $$('[data-absent]').forEach((b) => (b.onclick = run(async () => {
+      if (!confirm('Mark this winner as not here? Then press Draw to pick a replacement.')) return;
+      await api('/draws/' + b.dataset.absent.replace('/', '/absent/'), { method: 'POST' }); renderDraws();
+    })));
+    $$('[data-del]').forEach((b) => (b.onclick = run(async () => { if (!confirm('Delete this draw and its winners?')) return; await api('/draws/' + b.dataset.del, { method: 'DELETE' }); renderDraws(); })));
+  }
+
+  // ---------- Star Spotlight ----------
+  async function renderStars() {
+    const stars = await api('/stars');
+    const pending = stars.filter((s) => s.status === 'pending');
+    const setStatus = (ids, status) => api('/stars/status', { method: 'POST', body: { ids, status } });
+    const row = (s) => `<tr><td><b>${esc(s.to_name)}</b><div class="muted small">from ${esc(s.from_name)} · ${when(s.created_at)}</div></td><td>${esc(s.message)}</td>
+      <td><div class="row">${s.status !== 'approved' ? `<button class="btn sm" data-set="approved" data-id="${s.id}">Approve</button>` : ''}${s.status !== 'rejected' ? `<button class="btn sm ghost" data-set="rejected" data-id="${s.id}">Hide</button>` : ''}</div></td></tr>`;
+    const table = (list, empty) => `<div class="card tablewrap"><table><tr><th>To</th><th>Message</th><th></th></tr>${list.map(row).join('') || `<tr><td colspan="3" class="muted">${empty}</td></tr>`}</table></div>`;
+    page().innerHTML = `<h2 class="page">Star Spotlight</h2>
+      <p class="muted" style="margin-top:-6px">Guests send appreciation messages to colleagues from the Play tab. Nothing is shown until you approve it; once you do, the colleague is told straight away. Approved stars rotate on the LED screen.</p>
+      <div class="row wrap" style="margin:14px 0 8px"><h3>Waiting for approval (${pending.length})</h3><span class="spacer"></span>
+        ${pending.length ? '<button class="btn sm" id="approveAll">Approve all</button>' : ''}
+        <button class="btn sm secondary" id="starScreen">📺 Show on LED</button></div>
+      ${table(pending, 'Nothing waiting.')}
+      <h3 style="margin:18px 0 8px">Approved</h3>${table(stars.filter((s) => s.status === 'approved'), 'None yet.')}
+      <h3 style="margin:18px 0 8px">Hidden</h3>${table(stars.filter((s) => s.status === 'rejected'), 'None.')}`;
+    $('#approveAll') && ($('#approveAll').onclick = run(async () => { await setStatus(pending.map((s) => s.id), 'approved'); toast('Approved'); renderStars(); }));
+    $('#starScreen').onclick = run(async () => { await api('/screen', { method: 'POST', body: { mode: 'spotlight' } }); toast('On the LED screen now'); });
+    $$('[data-set]').forEach((b) => (b.onclick = run(async () => { await setStatus([Number(b.dataset.id)], b.dataset.set); renderStars(); })));
+  }
+
   // ---------- LED screen ----------
   async function renderScreen() {
-    const [cur, acts, wheels] = await Promise.all([api('/screen'), api('/activities'), api('/wheels')]);
+    const [cur, acts, wheels, draws] = await Promise.all([api('/screen'), api('/activities'), api('/wheels'), api('/draws')]);
     const on = (mode, id = null) => cur.mode === mode && (cur.id ?? null) === id;
     const btn = (label, mode, id = null) => on(mode, id)
       ? '<span class="pill live">On screen</span>'
@@ -493,6 +559,8 @@
         <tr><td><b>Welcome</b><div class="muted small">Event artwork with what's on now and next</div></td><td>${btn('Show', 'welcome')}</td></tr>
         <tr><td><b>Arrivals</b><div class="muted small">Live check-in count and the latest names</div></td><td>${btn('Show', 'arrivals')}</td></tr>
         <tr><td><b>Overall leaderboard</b><div class="muted small">Top 10 across every quiz</div></td><td>${btn('Show', 'leaderboard')}</td></tr>
+        <tr><td><b>⭐ Star Spotlight</b><div class="muted small">Approved appreciation messages, one at a time</div></td><td>${btn('Show', 'spotlight')}</td></tr>
+        ${draws.map((d) => `<tr><td><b>🎁 ${esc(d.title)}</b><div class="muted small">Lucky draw · press Draw on the Lucky draw page</div></td><td>${btn('Show', 'draw', d.id)}</td></tr>`).join('')}
         ${shown.map((a) => `<tr><td><b>${a.kind === 'quiz' ? '🏆' : '📊'} ${esc(a.title)}</b> <span class="pill ${a.status === 'live' ? 'live' : ''}">${a.status}</span>
           <div class="muted small">${a.kind === 'quiz' ? (a.status === 'closed' ? 'Shows the winners' : 'Shows how many are playing; the winners appear once you close it') : 'Live vote results'} · ${a.participants} taken part</div></td>
           <td>${btn('Show results', 'activity', a.id)}</td></tr>`).join('')}
@@ -811,6 +879,6 @@
     refreshEmail();
   }
 
-  const renderers = { dashboard: renderDashboard, attendees: renderAttendees, updates: renderUpdates, engage: renderEngage, agenda: renderAgenda, gallery: renderGallery, broadcast: renderBroadcast, branding: renderBranding, wheels: renderWheels, screen: renderScreen };
+  const renderers = { dashboard: renderDashboard, attendees: renderAttendees, updates: renderUpdates, engage: renderEngage, agenda: renderAgenda, gallery: renderGallery, broadcast: renderBroadcast, branding: renderBranding, wheels: renderWheels, screen: renderScreen, draws: renderDraws, stars: renderStars };
   loadBrand().catch(() => {}).finally(route);
 })();
