@@ -436,6 +436,9 @@
         ${rq ? `<div class="muted small" style="margin-top:6px">${rq.responses} response${rq.responses === 1 ? '' : 's'}${rq.correctPercent != null ? ` · ${rq.correctPercent}% got it right` : ''}</div>` : ''}
       </div>`;
     };
+    // With artwork, the question form stays folded until the guest taps the artwork (e.g. its "Nominate" button).
+    const art = a.image_path;
+    const typedOnly = d.questions.every((q) => q.qtype === 'text'); // e.g. a nomination: "answer", not "vote"
     view.innerHTML = `
       <div class="card">
         <a href="#engage" class="small">← All quizzes & polls</a>
@@ -443,15 +446,20 @@
           <span class="pill ${a.status === 'live' ? 'live' : ''}">${a.status === 'live' ? 'Live' : 'Closed'}</span>
           <span class="pill">${a.kind === 'quiz' ? '🏆 Quiz' : '📊 Poll'}</span>
         </div>
-        <h2 style="font-size:22px;margin-top:10px">${esc(a.title)}</h2>
+        ${art ? (canAnswer
+          ? `<button class="artwork" id="artOpen" aria-label="${esc(a.title)}: tap to answer"><img src="/uploads/${esc(art)}" alt="${esc(a.title)}"></button>`
+          : `<div class="artwork"><img src="/uploads/${esc(art)}" alt="${esc(a.title)}"></div>`) : ''}
+        <h2 style="font-size:22px;margin-top:10px" ${art ? 'class="sr-only"' : ''}>${esc(a.title)}</h2>
         ${a.description ? `<p class="muted" style="margin:6px 0 0">${esc(a.description)}</p>` : ''}
         ${d.submitted && a.kind === 'quiz' ? `
           <div class="scorebox"><div class="big">${d.my_score}${r ? '/' + r.maxScore : ''}</div>
             <div><b>Your score</b><div class="muted small">${r?.myRank ? `You ranked #${r.myRank} of ${r.participants}` : 'Results and the winner will be revealed by the organisers.'}</div></div></div>` : ''}
-        ${d.submitted && a.kind === 'poll' ? '<div class="pill ok" style="margin-top:12px">✓ Thanks for voting!</div>' : ''}
+        ${d.submitted && a.kind === 'poll' ? `<div class="pill ok" style="margin-top:12px">✓ ${typedOnly ? 'Thanks, your answer is in!' : 'Thanks for voting!'}</div>` : ''}
         ${r?.winner ? `<div class="scorebox"><div class="big">🏆</div><div><div class="muted small">Winner</div><b style="font-size:18px">${esc(r.winner.name)}</b><div class="muted small">${esc(r.winner.company || '')} · ${r.winner.score}/${r.maxScore}</div></div></div>` : ''}
-        ${d.questions.map(qHtml).join('')}
-        ${canAnswer ? '<button class="btn block" id="submitAct" style="margin-top:20px" disabled>Submit</button>' : ''}
+        <div id="actForm" ${art && canAnswer ? 'hidden' : ''}>
+          ${d.questions.map(qHtml).join('')}
+          ${canAnswer ? '<button class="btn block" id="submitAct" style="margin-top:20px" disabled>Submit</button>' : ''}
+        </div>
         ${!canAnswer && !d.submitted && a.status !== 'live' ? '<p class="muted" style="margin-top:16px">This one has closed.</p>' : ''}
       </div>
       ${r?.top?.length ? `<div class="section-title"><h2>Top 10</h2><span class="muted small">${r.participants} of ${r.totalAttendees} took part</span></div>
@@ -460,7 +468,15 @@
     if (!canAnswer) return;
     const choiceQs = d.questions.filter((q) => q.qtype === 'choice').map((q) => q.id);
     const btn = $('#submitAct');
-    const refresh = () => (btn.disabled = !choiceQs.every((q) => chosen[q] != null));
+    // Every question needs an answer, typed ones included.
+    const refresh = () => (btn.disabled = !choiceQs.every((q) => chosen[q] != null) || $$('#actForm textarea').some((t) => !t.value.trim()));
+    $$('#actForm textarea').forEach((t) => (t.oninput = refresh));
+    if ($('#artOpen')) $('#artOpen').onclick = () => {
+      $('#actForm').hidden = false;
+      const first = $('#actForm textarea, #actForm .option');
+      first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      if (first.tagName === 'TEXTAREA') first.focus({ preventScroll: true });
+    };
     $$('.option').forEach((o) => (o.onclick = () => {
       const q = Number(o.dataset.q);
       chosen[q] = Number(o.dataset.o);
@@ -473,7 +489,7 @@
       const answers = d.questions.map((q) => (q.qtype === 'text' ? { question_id: q.id, text: $(`textarea[data-q="${q.id}"]`).value } : { question_id: q.id, option_index: chosen[q.id] }));
       try {
         const out = await api(`/activities/${id}/submit`, { method: 'POST', body: { answers } });
-        toast(a.kind === 'quiz' ? `Submitted! You scored ${out.score}.` : 'Vote recorded — thanks!', { icon: '🎉' });
+        toast(a.kind === 'quiz' ? `Submitted! You scored ${out.score}.` : typedOnly ? 'Answer submitted — thank you!' : 'Vote recorded — thanks!', { icon: '🎉' });
         renderActivity(id);
       } catch (e) {
         toast(e.message, { error: true }); btn.disabled = false; btn.textContent = 'Submit';

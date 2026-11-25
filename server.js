@@ -861,7 +861,25 @@ admin.get('/activities/:id/results.csv', (req, res) => {
   res.send('﻿' + lines.join('\r\n'));
 });
 
+// Artwork for a quiz/poll: guests tap it to open the answer form.
+const removeUpload = (name) => { if (name) fs.rm(path.join(UPLOAD_DIR, path.basename(name)), { force: true }, () => {}); };
+admin.post('/activities/:id/image', upload.single('image'), (req, res) => {
+  const act = db.prepare('SELECT * FROM activities WHERE id = ?').get(req.params.id);
+  if (!act || !req.file) { removeUpload(req.file?.filename); return bad(res, act ? 'Choose an image' : 'Not found', act ? 400 : 404); }
+  if (!/^image\/(png|jpe?g|webp|gif)$/.test(req.file.mimetype)) { removeUpload(req.file.filename); return bad(res, 'Use a PNG, JPG or WebP image'); }
+  removeUpload(act.image_path);
+  db.prepare('UPDATE activities SET image_path = ? WHERE id = ?').run(req.file.filename, act.id);
+  res.json({ image_path: req.file.filename });
+});
+admin.delete('/activities/:id/image', (req, res) => {
+  const act = db.prepare('SELECT image_path FROM activities WHERE id = ?').get(req.params.id);
+  removeUpload(act?.image_path);
+  db.prepare('UPDATE activities SET image_path = NULL WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
 admin.delete('/activities/:id', (req, res) => {
+  removeUpload(db.prepare('SELECT image_path FROM activities WHERE id = ?').get(req.params.id)?.image_path);
   db.prepare('DELETE FROM activities WHERE id = ?').run(req.params.id);
   live.sendAll('activity', { id: Number(req.params.id), status: 'deleted' });
   res.json({ ok: true });

@@ -279,10 +279,11 @@
   }
 
   async function renderBuilder(id) {
-    let model = { kind: 'quiz', title: '', description: '', questions: [{ qtype: 'choice', text: '', options: ['', '', '', ''], correct_index: null, points: 1 }] };
+    let model = { kind: 'quiz', title: '', description: '', image_path: null, questions: [{ qtype: 'choice', text: '', options: ['', '', '', ''], correct_index: null, points: 1 }] };
+    let artFile = null, artRemove = false; // artwork picked in this editor, uploaded on save
     if (id) {
       const d = await api('/activities/' + id);
-      model = { kind: d.activity.kind, title: d.activity.title, description: d.activity.description || '', questions: d.questions.map((q) => ({ qtype: q.qtype, text: q.text, options: q.options, correct_index: q.correct_index, points: q.points })) };
+      model = { kind: d.activity.kind, title: d.activity.title, description: d.activity.description || '', image_path: d.activity.image_path, questions: d.questions.map((q) => ({ qtype: q.qtype, text: q.text, options: q.options, correct_index: q.correct_index, points: q.points })) };
     }
     const draw = () => {
       page().innerHTML = `<a href="#engage" class="small">← Back</a><h2 class="page" style="margin-top:8px">${id ? 'Edit' : 'New'} ${model.kind}</h2>
@@ -291,6 +292,14 @@
             <label class="field">Type<select class="input" id="kind" ${id ? 'disabled' : ''}><option value="quiz">Quiz — has right answers, picks a winner</option><option value="poll">Poll — opinions, shows the top choice</option></select></label>
             <label class="field">Title<input class="input" id="title" value="${esc(model.title)}"></label>
             <label class="field full">Short description (optional)<input class="input" id="desc" value="${esc(model.description)}"></label>
+            <div class="field full">Artwork (optional)
+              <div class="row wrap" style="margin-top:6px">
+                ${artFile ? `<span class="small">📎 ${esc(artFile.name)}</span>` : model.image_path && !artRemove ? `<img src="/uploads/${esc(model.image_path)}" alt="" style="height:90px;border-radius:8px">` : ''}
+                <input type="file" id="art" accept="image/png,image/jpeg,image/webp">
+                ${artFile || (model.image_path && !artRemove) ? '<button class="btn sm ghost" id="artRm">Remove artwork</button>' : ''}
+              </div>
+              <div class="muted small" style="margin-top:4px">Shown full width at the top. Guests tap it (e.g. its “Nominate” button) to open the answer box. Portrait images work best on phones.</div>
+            </div>
           </div>
           <div id="qs">${model.questions.map((q, i) => `
             <div class="qedit" data-i="${i}">
@@ -307,6 +316,8 @@
             </div>`).join('')}</div>
           <div class="row wrap"><button class="btn ghost" id="addQ">＋ Add question</button><span class="spacer"></span><button class="btn" id="save">${id ? 'Save changes' : 'Save as draft'}</button></div>
         </div>`;
+      $('#art').onchange = (e) => { sync(); artFile = e.target.files[0] || null; artRemove = false; draw(); };
+      $('#artRm') && ($('#artRm').onclick = () => { sync(); artFile = null; artRemove = true; draw(); });
       $('#kind').value = model.kind;
       $('#kind').onchange = (e) => { sync(); model.kind = e.target.value; draw(); };
       $('#addQ').onclick = () => { sync(); model.questions.push({ qtype: 'choice', text: '', options: ['', '', '', ''], correct_index: null, points: 1 }); draw(); };
@@ -323,7 +334,12 @@
       $('#save').onclick = run(async () => {
         sync();
         const body = { kind: model.kind, title: model.title, description: model.description, questions: model.questions };
-        if (id) await api('/activities/' + id, { method: 'PUT', body }); else await api('/activities', { method: 'POST', body });
+        let actId = id;
+        if (id) await api('/activities/' + id, { method: 'PUT', body }); else actId = (await api('/activities', { method: 'POST', body })).id;
+        if (artFile) {
+          const fd = new FormData(); fd.append('image', artFile);
+          await api(`/activities/${actId}/image`, { method: 'POST', body: fd });
+        } else if (artRemove && model.image_path) await api(`/activities/${actId}/image`, { method: 'DELETE' });
         toast('Saved. Use “Go live” when you’re ready.'); location.hash = '#engage';
       });
     };
