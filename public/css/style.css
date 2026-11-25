@@ -344,3 +344,24 @@ body.has-partners main { padding-bottom: 20px; }
 button.artwork { cursor: pointer; }
 button.artwork:focus-visible { outline: 3px solid var(--coral); outline-offset: 2px; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* Artwork fits the screen so the question is never far away. */
+.artwork { text-align: center; background: var(--sand-50); }
+.art-frame { position: relative; display: inline-block; vertical-align: top; max-width: 100%; }
+.artwork .art-frame img { width: auto; max-width: 100%; max-height: min(60vh, 560px); margin: 0 auto; }
+/* The artwork's own button, glowing so it reads as tappable (box marked by organisers). */
+.cta-glow { position: absolute; border-radius: 999px; pointer-events: none; overflow: hidden;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.95), 0 0 14px 4px var(--coral); animation: ctaPulse 1.6s ease-in-out infinite; }
+.cta-glow::after { content: ''; position: absolute; top: 0; bottom: 0; width: 40%; left: -60%;
+  background: linear-gradient(100deg, transparent, rgba(255,255,255,.75), transparent); animation: ctaShine 2.4s ease-in-out infinite; }
+@keyframes ctaPulse { 50% { box-shadow: 0 0 0 3px #fff, 0 0 30px 12px var(--coral); transform: scale(1.04); } }
+@keyframes ctaShine { 60%, 100% { left: 120%; } }
+/* No marked button: a real one under the artwork. */
+.cta-btn { margin-top: 12px; animation: ctaPulse 1.6s ease-in-out infinite; box-shadow: 0 0 14px 4px var(--coral); }
+@media (prefers-reduced-motion: reduce) { .cta-glow, .cta-glow::after, .cta-btn { animation: none; } }
+/* Admin: marking the button */
+.cta-pick { position: relative; display: inline-block; max-width: 320px; cursor: crosshair; touch-action: none; user-select: none; }
+.cta-pick img { display: block; width: 100%; border-radius: 8px; }
+.cta-box { position: absolute; border: 2px dashed var(--coral); background: color-mix(in srgb, var(--coral) 22%, transparent); border-radius: 6px; pointer-events: none; }
+main .card { scroll-margin-top: 12px; }
+@media (min-width: 820px) { main .card { scroll-margin-top: 72px; } } /* clear the sticky tab bar */

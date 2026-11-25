@@ -868,13 +868,26 @@ admin.post('/activities/:id/image', upload.single('image'), (req, res) => {
   if (!act || !req.file) { removeUpload(req.file?.filename); return bad(res, act ? 'Choose an image' : 'Not found', act ? 400 : 404); }
   if (!/^image\/(png|jpe?g|webp|gif)$/.test(req.file.mimetype)) { removeUpload(req.file.filename); return bad(res, 'Use a PNG, JPG or WebP image'); }
   removeUpload(act.image_path);
-  db.prepare('UPDATE activities SET image_path = ? WHERE id = ?').run(req.file.filename, act.id);
+  // A new image keeps the marked button only if the admin sends it again (the editor does).
+  db.prepare('UPDATE activities SET image_path = ?, cta_box = NULL WHERE id = ?').run(req.file.filename, act.id);
   res.json({ image_path: req.file.filename });
+});
+// Where the button sits on the artwork (percentages of the image), so it can glow. null clears it.
+admin.put('/activities/:id/cta', (req, res) => {
+  const b = req.body?.cta_box;
+  let box = null;
+  if (b) {
+    box = Object.fromEntries(['x', 'y', 'w', 'h'].map((k) => [k, Math.round(Number(b[k]) * 10) / 10]));
+    const ok = Object.values(box).every((v) => Number.isFinite(v) && v >= 0 && v <= 100) && box.w >= 1 && box.h >= 1 && box.x + box.w <= 100.5 && box.y + box.h <= 100.5;
+    if (!ok) return bad(res, 'Mark the button again');
+  }
+  db.prepare('UPDATE activities SET cta_box = ? WHERE id = ?').run(box && JSON.stringify(box), req.params.id);
+  res.json({ cta_box: box });
 });
 admin.delete('/activities/:id/image', (req, res) => {
   const act = db.prepare('SELECT image_path FROM activities WHERE id = ?').get(req.params.id);
   removeUpload(act?.image_path);
-  db.prepare('UPDATE activities SET image_path = NULL WHERE id = ?').run(req.params.id);
+  db.prepare('UPDATE activities SET image_path = NULL, cta_box = NULL WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });
 

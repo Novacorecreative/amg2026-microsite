@@ -439,6 +439,8 @@
     // With artwork, the question form stays folded until the guest taps the artwork (e.g. its "Nominate" button).
     const art = a.image_path;
     const typedOnly = d.questions.every((q) => q.qtype === 'text'); // e.g. a nomination: "answer", not "vote"
+    const cta = a.cta_box && JSON.parse(a.cta_box); // the artwork's own button, marked by organisers
+    const ctaGlow = cta ? `<span class="cta-glow" style="left:${cta.x}%;top:${cta.y}%;width:${cta.w}%;height:${cta.h}%"></span>` : '';
     view.innerHTML = `
       <div class="card">
         <a href="#engage" class="small">← All quizzes & polls</a>
@@ -447,8 +449,9 @@
           <span class="pill">${a.kind === 'quiz' ? '🏆 Quiz' : '📊 Poll'}</span>
         </div>
         ${art ? (canAnswer
-          ? `<button class="artwork" id="artOpen" aria-label="${esc(a.title)}: tap to answer"><img src="/uploads/${esc(art)}" alt="${esc(a.title)}"></button>`
-          : `<div class="artwork"><img src="/uploads/${esc(art)}" alt="${esc(a.title)}"></div>`) : ''}
+          ? `<button class="artwork" id="artOpen" aria-label="${esc(a.title)}: tap to answer"><span class="art-frame"><img src="/uploads/${esc(art)}" alt="${esc(a.title)}">${ctaGlow}</span></button>
+             ${cta ? '' : '<button class="btn block cta-btn" id="ctaOpen">Tap to answer</button>'}`
+          : `<div class="artwork"><span class="art-frame"><img src="/uploads/${esc(art)}" alt="${esc(a.title)}"></span></div>`) : ''}
         <h2 style="font-size:22px;margin-top:10px" ${art ? 'class="sr-only"' : ''}>${esc(a.title)}</h2>
         ${a.description ? `<p class="muted" style="margin:6px 0 0">${esc(a.description)}</p>` : ''}
         ${d.submitted && a.kind === 'quiz' ? `
@@ -465,18 +468,26 @@
       ${r?.top?.length ? `<div class="section-title"><h2>Top 10</h2><span class="muted small">${r.participants} of ${r.totalAttendees} took part</span></div>
         <div class="card">${r.top.map((x) => `<div class="leader"><div class="rank">${x.rank}</div><div style="flex:1"><b>${esc(x.name)}</b><div class="muted small">${esc(x.company || '')}</div></div><b>${x.score}</b></div>`).join('')}</div>` : ''}`;
 
+    // Skip past the event header so the artwork (and its button) fill the screen.
+    if (art) {
+      const img = $('.artwork img', view), go = () => $('.card', view)?.scrollIntoView({ block: 'start' });
+      img.complete ? go() : img.addEventListener('load', go, { once: true }); // the page is only tall enough once the image is in
+    }
     if (!canAnswer) return;
     const choiceQs = d.questions.filter((q) => q.qtype === 'choice').map((q) => q.id);
     const btn = $('#submitAct');
     // Every question needs an answer, typed ones included.
     const refresh = () => (btn.disabled = !choiceQs.every((q) => chosen[q] != null) || $$('#actForm textarea').some((t) => !t.value.trim()));
     $$('#actForm textarea').forEach((t) => (t.oninput = refresh));
-    if ($('#artOpen')) $('#artOpen').onclick = () => {
+    const openForm = () => {
       $('#actForm').hidden = false;
+      $('#ctaOpen')?.remove();
       const first = $('#actForm textarea, #actForm .option');
       first.scrollIntoView({ behavior: 'smooth', block: 'center' });
       if (first.tagName === 'TEXTAREA') first.focus({ preventScroll: true });
     };
+    $('#artOpen') && ($('#artOpen').onclick = openForm);
+    $('#ctaOpen') && ($('#ctaOpen').onclick = openForm);
     $$('.option').forEach((o) => (o.onclick = () => {
       const q = Number(o.dataset.q);
       chosen[q] = Number(o.dataset.o);

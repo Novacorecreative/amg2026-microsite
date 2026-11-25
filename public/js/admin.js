@@ -278,12 +278,33 @@
     $$('[data-del]').forEach((b) => (b.onclick = run(async () => { if (!confirm('Delete this and all its answers?')) return; await api('/activities/' + b.dataset.del, { method: 'DELETE' }); renderEngage(); })));
   }
 
+  // Drag a box over the artwork to mark its button; stored as percentages so it fits any screen size.
+  function markButton(pick, box, model) {
+    const show = (b) => { Object.assign(box.style, { left: b.x + '%', top: b.y + '%', width: b.w + '%', height: b.h + '%' }); box.classList.remove('hidden'); };
+    if (model.cta_box) show(model.cta_box);
+    let start = null;
+    const pct = (e) => {
+      const r = pick.getBoundingClientRect();
+      return { x: Math.min(100, Math.max(0, ((e.clientX - r.left) / r.width) * 100)), y: Math.min(100, Math.max(0, ((e.clientY - r.top) / r.height) * 100)) };
+    };
+    const boxFrom = (a, b) => ({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(a.x - b.x), h: Math.abs(a.y - b.y) });
+    pick.onpointerdown = (e) => { e.preventDefault(); start = pct(e); pick.setPointerCapture(e.pointerId); };
+    pick.onpointermove = (e) => { if (start) show(boxFrom(start, pct(e))); };
+    pick.onpointerup = (e) => {
+      if (!start) return;
+      const b = boxFrom(start, pct(e));
+      start = null;
+      if (b.w < 2 || b.h < 1) { if (!model.cta_box) box.classList.add('hidden'); else show(model.cta_box); return; } // a click, not a drag
+      model.cta_box = b;
+    };
+  }
+
   async function renderBuilder(id) {
     let model = { kind: 'quiz', title: '', description: '', image_path: null, questions: [{ qtype: 'choice', text: '', options: ['', '', '', ''], correct_index: null, points: 1 }] };
-    let artFile = null, artRemove = false; // artwork picked in this editor, uploaded on save
+    let artFile = null, artUrl = null, artRemove = false; // artwork picked in this editor, uploaded on save
     if (id) {
       const d = await api('/activities/' + id);
-      model = { kind: d.activity.kind, title: d.activity.title, description: d.activity.description || '', image_path: d.activity.image_path, questions: d.questions.map((q) => ({ qtype: q.qtype, text: q.text, options: q.options, correct_index: q.correct_index, points: q.points })) };
+      model = { kind: d.activity.kind, title: d.activity.title, description: d.activity.description || '', image_path: d.activity.image_path, cta_box: d.activity.cta_box ? JSON.parse(d.activity.cta_box) : null, questions: d.questions.map((q) => ({ qtype: q.qtype, text: q.text, options: q.options, correct_index: q.correct_index, points: q.points })) };
     }
     const draw = () => {
       page().innerHTML = `<a href="#engage" class="small">← Back</a><h2 class="page" style="margin-top:8px">${id ? 'Edit' : 'New'} ${model.kind}</h2>
@@ -294,11 +315,12 @@
             <label class="field full">Short description (optional)<input class="input" id="desc" value="${esc(model.description)}"></label>
             <div class="field full">Artwork (optional)
               <div class="row wrap" style="margin-top:6px">
-                ${artFile ? `<span class="small">📎 ${esc(artFile.name)}</span>` : model.image_path && !artRemove ? `<img src="/uploads/${esc(model.image_path)}" alt="" style="height:90px;border-radius:8px">` : ''}
                 <input type="file" id="art" accept="image/png,image/jpeg,image/webp">
-                ${artFile || (model.image_path && !artRemove) ? '<button class="btn sm ghost" id="artRm">Remove artwork</button>' : ''}
+                ${artSrc() ? '<button class="btn sm ghost" id="artRm">Remove artwork</button>' : ''}
               </div>
-              <div class="muted small" style="margin-top:4px">Shown full width at the top. Guests tap it (e.g. its “Nominate” button) to open the answer box. Portrait images work best on phones.</div>
+              ${artSrc() ? `<div class="muted small" style="margin:8px 0 6px"><b>Make its button glow:</b> drag a box over the button in the artwork. ${model.cta_box ? '<button class="btn sm ghost" id="ctaClear">Clear box</button>' : ''}</div>
+                <div class="cta-pick" id="ctaPick"><img src="${esc(artSrc())}" alt="" draggable="false"><span class="cta-box ${model.cta_box ? '' : 'hidden'}" id="ctaBox"></span></div>`
+                : '<div class="muted small" style="margin-top:4px">Shown at the top of the page; guests tap it to open the answer box. Portrait images work best on phones.</div>'}
             </div>
           </div>
           <div id="qs">${model.questions.map((q, i) => `
@@ -316,8 +338,14 @@
             </div>`).join('')}</div>
           <div class="row wrap"><button class="btn ghost" id="addQ">＋ Add question</button><span class="spacer"></span><button class="btn" id="save">${id ? 'Save changes' : 'Save as draft'}</button></div>
         </div>`;
-      $('#art').onchange = (e) => { sync(); artFile = e.target.files[0] || null; artRemove = false; draw(); };
-      $('#artRm') && ($('#artRm').onclick = () => { sync(); artFile = null; artRemove = true; draw(); });
+      $('#art').onchange = (e) => {
+        sync(); artFile = e.target.files[0] || null; artRemove = false; model.cta_box = null;
+        if (artUrl) URL.revokeObjectURL(artUrl);
+        artUrl = artFile && URL.createObjectURL(artFile); draw();
+      };
+      $('#artRm') && ($('#artRm').onclick = () => { sync(); artFile = null; artRemove = true; model.cta_box = null; draw(); });
+      $('#ctaClear') && ($('#ctaClear').onclick = () => { sync(); model.cta_box = null; draw(); });
+      if ($('#ctaPick')) markButton($('#ctaPick'), $('#ctaBox'), model);
       $('#kind').value = model.kind;
       $('#kind').onchange = (e) => { sync(); model.kind = e.target.value; draw(); };
       $('#addQ').onclick = () => { sync(); model.questions.push({ qtype: 'choice', text: '', options: ['', '', '', ''], correct_index: null, points: 1 }); draw(); };
@@ -340,9 +368,11 @@
           const fd = new FormData(); fd.append('image', artFile);
           await api(`/activities/${actId}/image`, { method: 'POST', body: fd });
         } else if (artRemove && model.image_path) await api(`/activities/${actId}/image`, { method: 'DELETE' });
+        if (artSrc()) await api(`/activities/${actId}/cta`, { method: 'PUT', body: { cta_box: model.cta_box } });
         toast('Saved. Use “Go live” when you’re ready.'); location.hash = '#engage';
       });
     };
+    function artSrc() { return artFile ? artUrl : model.image_path && !artRemove ? '/uploads/' + model.image_path : null; }
     function sync() {
       model.title = $('#title').value; model.description = $('#desc').value;
       $$('.qedit').forEach((el) => {
