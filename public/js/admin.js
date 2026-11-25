@@ -326,7 +326,7 @@
           <div id="qs">${model.questions.map((q, i) => `
             <div class="qedit" data-i="${i}">
               <div class="row"><b>Q${i + 1}</b><select class="input" data-f="qtype" style="max-width:190px"><option value="choice" ${q.qtype === 'choice' ? 'selected' : ''}>Multiple choice</option><option value="text" ${q.qtype === 'text' ? 'selected' : ''}>Open text answer</option></select>
-                ${model.kind === 'quiz' && q.qtype === 'choice' ? `<label class="small muted">Points <input class="input" data-f="points" type="number" min="1" value="${q.points}" style="width:70px;display:inline-block"></label>` : ''}
+                ${(model.kind === 'quiz' && q.qtype === 'choice') || q.qtype === 'text' ? `<label class="small muted">${q.qtype === 'text' ? 'Points for answering' : 'Points'} <input class="input" data-f="points" type="number" min="1" value="${q.points}" style="width:70px;display:inline-block"></label>` : ''}
                 <span class="spacer"></span>${model.questions.length > 1 ? '<button class="btn sm ghost" data-rm>Remove</button>' : ''}</div>
               <input class="input" data-f="text" placeholder="Question" value="${esc(q.text)}" style="margin-top:8px">
               ${q.qtype === 'choice' ? `${q.options.map((o, oi) => `<div class="optrow">
@@ -405,17 +405,19 @@
       ${a.kind === 'quiz' ? (r.winner ? `<div class="winner" style="margin-top:16px"><div class="trophy">🏆</div><div><div class="muted small">Winner</div><h3 style="font-size:22px">${esc(r.winner.name)}</h3>
           <div class="muted">${esc(r.winner.company || '')} · ${r.winner.score}/${r.maxScore} points in ${fmtS(r.winner.duration_ms)}</div></div></div>` : '<div class="card muted" style="margin-top:16px">No winner yet — waiting for answers.</div>') : ''}
       <div class="two" style="margin-top:16px">
-        ${a.kind === 'quiz' ? `<div class="card"><h3>Ranking</h3><p class="muted small">Highest score first; ties broken by fastest time.</p>
+        ${a.kind === 'quiz' || r.maxScore > 0 ? `<div class="card"><h3>Ranking</h3><p class="muted small">${a.kind === 'quiz' ? 'Highest score first; ties broken by fastest time.' : 'Points for answering; these count on the overall leaderboard.'}</p>
           <div class="tablewrap" style="max-height:540px;overflow:auto"><table><tr><th>#</th><th>Name</th><th>Score</th><th>Time</th></tr>
           ${r.rankings.map((x) => `<tr><td>${x.rank}</td><td><b>${esc(x.name)}</b><div class="muted small">${esc(x.company || '')}</div></td><td>${x.score}/${r.maxScore}</td><td>${fmtS(x.duration_ms)}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No responses yet</td></tr>'}
           </table></div></div>` : ''}
-        <div ${a.kind === 'poll' ? 'style="grid-column:1/-1"' : ''}>${r.questions.map((q, i) => `<div class="card">
+        <div ${a.kind === 'poll' && !(r.maxScore > 0) ? 'style="grid-column:1/-1"' : ''}>${r.questions.map((q, i) => `<div class="card">
           <div class="row wrap"><b>Q${i + 1}. ${esc(q.text)}</b><span class="spacer"></span><span class="muted small">${q.responses} response${q.responses === 1 ? '' : 's'}</span></div>
           ${q.correctPercent != null ? `<div class="pill ok" style="margin-top:6px">${q.correctCount} answered correctly · ${q.correctPercent}%</div>` : ''}
           ${q.qtype === 'choice' && a.kind === 'poll' && q.topOptions.length ? `<div class="pill gold" style="margin-top:6px">Most votes: ${q.topOptions.map((x) => esc(q.options[x])).join(' & ')}</div>` : ''}
           ${q.qtype === 'choice' ? q.options.map((o, oi) => `<div class="chartbar ${q.correct_index === oi ? 'correct' : ''}"><div style="width:${q.percents[oi]}%"></div>
               <span>${String.fromCharCode(65 + oi)}. ${esc(o)} ${q.correct_index === oi ? '✓' : ''}</span><em>${q.counts[oi]} · ${q.percents[oi]}%</em></div>`).join('')
-            : `<div style="max-height:260px;overflow:auto;margin-top:8px">${(q.textAnswers || []).map((t) => `<div style="padding:6px 0;border-bottom:1px solid var(--sand-100)">“${esc(t)}”</div>`).join('') || '<div class="muted">No answers yet</div>'}</div>`}
+            : `<div class="tablewrap" style="max-height:420px;overflow:auto;margin-top:8px"><table><tr><th>Name</th><th>Answer</th><th>Points</th></tr>
+                ${(q.textAnswers || []).map((t) => `<tr><td><b>${esc(t.name)}</b><div class="muted small">${esc(t.company || '')}</div></td><td>“${esc(t.text)}”</td><td>+${q.points}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">No answers yet</td></tr>'}
+              </table></div>`}
         </div>`).join('')}</div>
       </div>`;
     $('#refresh').onclick = () => renderResults(id);
@@ -622,9 +624,9 @@
   async function renderLeaderboard() {
     const rows = await api('/leaderboard');
     page().innerHTML = `<a href="#engage" class="small">← Back</a><h2 class="page" style="margin-top:8px">Overall leaderboard</h2>
-      <p class="muted">Total points across every quiz; ties broken by total time. Toggle guest visibility on the Dashboard.</p>
-      <div class="card tablewrap"><table><tr><th>#</th><th>Name</th><th>Company</th><th>Quizzes</th><th>Points</th><th>Total time</th></tr>
-      ${rows.map((r) => `<tr><td>${r.rank}</td><td><b>${esc(r.name)}</b></td><td>${esc(r.company || '')}</td><td>${r.quizzes}</td><td><b>${r.points}</b></td><td>${(r.time_ms / 1000).toFixed(1)}s</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No quiz answers yet</td></tr>'}</table></div>`;
+      <p class="muted">Total points across every quiz, plus points for typed answers in quizzes and polls; ties broken by total time. Toggle guest visibility on the Dashboard.</p>
+      <div class="card tablewrap"><table><tr><th>#</th><th>Name</th><th>Company</th><th>Played</th><th>Points</th><th>Total time</th></tr>
+      ${rows.map((r) => `<tr><td>${r.rank}</td><td><b>${esc(r.name)}</b></td><td>${esc(r.company || '')}</td><td>${r.quizzes}</td><td><b>${r.points}</b></td><td>${(r.time_ms / 1000).toFixed(1)}s</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No points scored yet</td></tr>'}</table></div>`;
   }
 
   // ---------- agenda ----------

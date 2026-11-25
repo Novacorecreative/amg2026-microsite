@@ -36,7 +36,8 @@ app.use('/uploads', express.static(UPLOAD_DIR, {
     res.set('Content-Security-Policy', "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox");
   },
 }));
-app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'] }));
+// no-cache = browsers re-check (cheaply, via ETag) on every load, so phones never mix old scripts with a new server after a deploy.
+app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], setHeaders: (res) => res.set('Cache-Control', 'no-cache') }));
 // QR decoder for the check-in desk's camera scanner.
 app.get('/vendor/jsQR.js', (_req, res) => res.sendFile(require.resolve('jsqr/dist/jsQR.js')));
 
@@ -184,14 +185,15 @@ function resultsFor(activityId) {
   const totalAttendees = db.prepare('SELECT COUNT(*) n FROM attendees').get().n;
   const participants = db.prepare('SELECT COUNT(*) n FROM submissions WHERE activity_id = ? AND submitted_at IS NOT NULL').get(activityId).n;
   const questions = loadQuestions(activityId).map((q) => {
-    const rows = db.prepare('SELECT option_index, text_answer, is_correct FROM answers WHERE question_id = ?').all(q.id);
+    const rows = db.prepare(`SELECT x.option_index, x.text_answer, x.is_correct, a.name, a.company FROM answers x
+      JOIN attendees a ON a.id = x.attendee_id WHERE x.question_id = ? ORDER BY x.answered_at, x.id`).all(q.id);
     const counts = q.options.map(() => 0);
     let correct = 0;
     const texts = [];
     for (const r of rows) {
       if (r.option_index != null && counts[r.option_index] != null) counts[r.option_index]++;
       if (r.is_correct) correct++;
-      if (r.text_answer) texts.push(r.text_answer);
+      if (r.text_answer) texts.push({ name: r.name, company: r.company, text: r.text_answer });
     }
     const max = Math.max(0, ...counts);
     return {
@@ -207,7 +209,7 @@ function resultsFor(activityId) {
     };
   });
   let rankings = [];
-  if (act.kind === 'quiz') {
+  if (act.kind === 'quiz' || questions.some((q) => q.qtype === 'text')) { // typed answers earn points in polls too
     rankings = db.prepare(`
       SELECT s.attendee_id, s.score, s.duration_ms, s.submitted_at, a.name, a.company
       FROM submissions s JOIN attendees a ON a.id = s.attendee_id
@@ -215,7 +217,7 @@ function resultsFor(activityId) {
       ORDER BY s.score DESC, s.duration_ms ASC, s.submitted_at ASC`).all(activityId);
     rankings.forEach((r, i) => (r.rank = i + 1));
   }
-  const maxScore = questions.filter((q) => q.correct_index != null).reduce((s, q) => s + q.points, 0);
+  const maxScore = questions.filter((q) => q.correct_index != null || q.qtype === 'text').reduce((s, q) => s + q.points, 0);
   return {
     activity: act, totalAttendees, participants,
     participationPercent: totalAttendees ? Math.round((participants / totalAttendees) * 1000) / 10 : 0,
@@ -286,7 +288,7 @@ api.post('/activities/:id/submit', (req, res) => {
       if (!g) continue;
       if (q.qtype === 'text') {
         const t = String(g.text || '').trim().slice(0, 1000);
-        if (t) ins.run(q.id, req.me.id, null, t, null, submittedAt);
+        if (t) { ins.run(q.id, req.me.id, null, t, null, submittedAt); score += q.points; } // answering earns the points
       } else {
         const idx = Number(g.option_index);
         if (!Number.isInteger(idx) || idx < 0 || idx >= q.options.length) continue;
@@ -299,11 +301,23 @@ api.post('/activities/:id/submit', (req, res) => {
     const duration = Math.max(0, Date.parse(submittedAt) - Date.parse(started));
     db.prepare(`INSERT INTO submissions(activity_id, attendee_id, started_at, submitted_at, duration_ms, score) VALUES (?,?,?,?,?,?)
       ON CONFLICT(activity_id, attendee_id) DO UPDATE SET submitted_at = excluded.submitted_at, duration_ms = excluded.duration_ms, score = excluded.score`)
-      .run(act.id, req.me.id, started, submittedAt, duration, act.kind === 'quiz' ? score : null);
+      .run(act.id, req.me.id, started, submittedAt, duration, score);
   });
   live.sendAll('activity-progress', { id: act.id });
-  res.json({ ok: true, score: act.kind === 'quiz' ? score : null });
+  res.json({ ok: true, score });
 });
+
+// Scores follow the rules above: correct quiz choices plus every typed answer. Re-applied at start-up so
+// answers given before a rule change (e.g. typed answers before they earned points) are counted too.
+function rescoreAll() {
+  const rows = db.prepare(`SELECT s.id, COALESCE(SUM(CASE WHEN x.is_correct = 1 OR (q.qtype = 'text' AND x.text_answer <> '') THEN q.points END), 0) AS score
+    FROM submissions s LEFT JOIN questions q ON q.activity_id = s.activity_id
+    LEFT JOIN answers x ON x.question_id = q.id AND x.attendee_id = s.attendee_id
+    WHERE s.submitted_at IS NOT NULL GROUP BY s.id`).all();
+  const upd = db.prepare('UPDATE submissions SET score = ? WHERE id = ? AND score IS NOT ?');
+  tx(() => rows.forEach((r) => upd.run(r.score, r.id, r.score)));
+}
+rescoreAll();
 
 // ----- spin the wheel -----
 // Segments a guest can still land on: unlimited ones, or limited ones with stock left.
@@ -344,9 +358,9 @@ api.get('/leaderboard', (_req, res) => {
 function leaderboard() {
   const rows = db.prepare(`
     SELECT a.id, a.name, a.company, SUM(s.score) AS points, COUNT(s.id) AS quizzes, SUM(s.duration_ms) AS time_ms
-    FROM submissions s JOIN attendees a ON a.id = s.attendee_id JOIN activities act ON act.id = s.activity_id
-    WHERE act.kind = 'quiz' AND s.submitted_at IS NOT NULL
-    GROUP BY a.id ORDER BY points DESC, time_ms ASC`).all();
+    FROM submissions s JOIN attendees a ON a.id = s.attendee_id
+    WHERE s.submitted_at IS NOT NULL AND s.score > 0
+    GROUP BY a.id ORDER BY points DESC, time_ms ASC`).all(); // every quiz and poll that gave points, typed answers included
   rows.forEach((r, i) => (r.rank = i + 1));
   return rows;
 }
@@ -1113,7 +1127,7 @@ function screenData({ mode, id }) {
       participants: r.participants, totalAttendees: r.totalAttendees, reveal,
       questions: reveal ? r.questions.map((q) => ({
         text: q.text, qtype: q.qtype, options: q.options, counts: q.counts, percents: q.percents,
-        responses: q.responses, correct_index: q.correct_index, textAnswers: (q.textAnswers || []).slice(-12),
+        responses: q.responses, correct_index: q.correct_index, textAnswers: (q.textAnswers || []).slice(-12).map((t) => t.text),
       })) : [],
       rankings: reveal ? r.rankings.slice(0, 10).map(({ rank, name, company, score, duration_ms }) => ({ rank, name, company, score, duration_ms })) : [],
       maxScore: r.maxScore,

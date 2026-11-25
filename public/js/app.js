@@ -500,7 +500,7 @@
       const answers = d.questions.map((q) => (q.qtype === 'text' ? { question_id: q.id, text: $(`textarea[data-q="${q.id}"]`).value } : { question_id: q.id, option_index: chosen[q.id] }));
       try {
         const out = await api(`/activities/${id}/submit`, { method: 'POST', body: { answers } });
-        toast(a.kind === 'quiz' ? `Submitted! You scored ${out.score}.` : typedOnly ? 'Answer submitted — thank you!' : 'Vote recorded — thanks!', { icon: '🎉' });
+        toast(a.kind === 'quiz' ? `Submitted! You scored ${out.score}.` : typedOnly ? `Answer submitted — thank you!${out.score ? ` +${out.score} point${out.score === 1 ? '' : 's'}` : ''}` : `Vote recorded — thanks!${out.score ? ` +${out.score} point${out.score === 1 ? '' : 's'}` : ''}`, { icon: '🎉' });
         renderActivity(id);
       } catch (e) {
         toast(e.message, { error: true }); btn.disabled = false; btn.textContent = 'Submit';
