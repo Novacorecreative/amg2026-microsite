@@ -70,8 +70,14 @@
     state.cfg.clientName = b.clientName;
     window.Brand.apply(b);
     const hero = $('.hero');
-    hero.style.background = window.Brand.heroBackground(b);
+    hero.style.background = b.banner ? '' : window.Brand.heroBackground(b);
     hero.classList.toggle('has-photo', !!b.heroImage);
+    hero.classList.toggle('has-banner', !!b.banner);
+    if (b.banner) {
+      $('#bannerArt source').srcset = b.bannerMobile || b.banner;
+      $('#bannerArt img').src = b.banner;
+      $('#bannerArt img').alt = `${b.eventName} · ${b.clientName}`;
+    }
     const logo = $('#brandLogo');
     logo.classList.toggle('hidden', !b.logo);
     logo.classList.toggle('badge', b.logoBadge);

@@ -533,6 +533,7 @@ admin.post('/wa-invites/:id/sent', (req, res) => {
 // ----- branding -----
 const brandUpload = upload.fields([
   { name: 'logo', maxCount: 1 }, { name: 'hero', maxCount: 1 }, { name: 'titleArt', maxCount: 1 }, { name: 'partners', maxCount: MAX_PARTNERS },
+  { name: 'banner', maxCount: 1 }, { name: 'bannerMobile', maxCount: 1 },
 ]);
 admin.put('/branding', brandUpload, (req, res) => {
   const b = req.body || {};
@@ -575,6 +576,8 @@ admin.put('/branding', brandUpload, (req, res) => {
   replaceFile('brand_logo', files.logo?.[0], b.removeLogo === 'true');
   replaceFile('brand_hero', files.hero?.[0], b.removeHero === 'true');
   replaceFile('brand_title_art', files.titleArt?.[0], b.removeTitleArt === 'true');
+  replaceFile('brand_banner', files.banner?.[0], b.removeBanner === 'true');
+  replaceFile('brand_banner_mobile', files.bannerMobile?.[0], b.removeBannerMobile === 'true');
   partnerFiles().filter((f) => !keptPartners.includes(f)).forEach(removeUpload);
   setSetting('brand_partner_logos', JSON.stringify([...keptPartners, ...(files.partners || []).map((f) => f.filename)]));
 

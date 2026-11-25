@@ -326,6 +326,17 @@ main { max-width: 980px; margin: -44px auto 0; padding: 0 16px 110px; position: 
 body.has-partners main { padding-bottom: 20px; }
 @media (min-width: 820px) { .partners { margin-bottom: 40px; } }
 .hero.has-photo { text-shadow: 0 1px 12px rgba(0,0,0,.25); }
+/* full banner artwork: logos and title are in the image, so the typed header is hidden */
+.banner-art { display: none; }
+.hero.has-banner { padding: 0; background: #fff; text-shadow: none; }
+.hero.has-banner .banner-art { display: block; }
+.banner-art img { display: block; width: 100%; height: auto; max-width: 1920px; margin: 0 auto; }
+.hero.has-banner :is(.sun, .wave, .brand, h1, .tagline, .meta, .countdown) { display: none; }
+/* only the profile button stays, in a corner the artwork leaves empty */
+.hero.has-banner .hero-inner { position: absolute; top: 8px; left: 8px; }
+.hero.has-banner .avatar-btn { width: 34px; height: 34px; font-size: 13px; background: var(--teal-700); border-color: #fff; box-shadow: 0 2px 8px rgba(0,0,0,.25); }
+@media (min-width: 701px) { .hero.has-banner .hero-inner { left: auto; right: 8px; } }
+body:has(.hero.has-banner) main { margin-top: 16px; }
 
 /* ---------- event pass ---------- */
 .card.pass { display: flex; gap: 16px; align-items: center; border-left: 5px solid var(--coral); }

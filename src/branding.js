@@ -36,6 +36,9 @@ function getBranding() {
     logoBadge: getSetting('brand_logo_badge') !== '0',
     titleArt: file('brand_title_art'),
     heroImage: file('brand_hero'),
+    // Finished banner artwork (logos and title built in): shown as-is instead of the typed header.
+    banner: file('brand_banner'),
+    bannerMobile: file('brand_banner_mobile'),
     heroTint: HERO_TINTS.includes(tint) ? tint : 'strong',
     font: FONTS.includes(font) ? font : 'bricolage',
     partnerLogos: partnerFiles().map((f) => `/uploads/${f}`),

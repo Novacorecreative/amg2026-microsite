@@ -813,6 +813,7 @@
   async function renderBranding() {
     await loadBrand();
     const m = { ...brand, logoFile: null, heroFile: null, artFile: null, removeLogo: false, removeHero: false, removeTitleArt: false,
+      bannerFile: null, bannerMobileFile: null, removeBanner: false, removeBannerMobile: false,
       partnerFiles: [], removePartners: [] };
     // Object URLs for picked files are made once, so redrawing the preview doesn't leak them.
     const blob = new Map();
@@ -820,6 +821,8 @@
     const logoUrl = () => (m.logoFile ? fileUrl(m.logoFile) : m.removeLogo ? null : brand.logo);
     const heroUrl = () => (m.heroFile ? fileUrl(m.heroFile) : m.removeHero ? null : brand.heroImage);
     const artUrl = () => (m.artFile ? fileUrl(m.artFile) : m.removeTitleArt ? null : brand.titleArt);
+    const bannerUrl = () => (m.bannerFile ? fileUrl(m.bannerFile) : m.removeBanner ? null : brand.banner);
+    const bannerMobileUrl = () => (m.bannerMobileFile ? fileUrl(m.bannerMobileFile) : m.removeBannerMobile ? null : brand.bannerMobile);
     const partnerList = () => [
       ...brand.partnerLogos.filter((u) => !m.removePartners.includes(u)).map((u) => ({ url: u, saved: u })),
       ...m.partnerFiles.map((f) => ({ url: fileUrl(f), file: f })),
@@ -840,6 +843,18 @@
             </div>
             <label class="field">Heading font<select class="input" id="fontSel">${Object.entries(window.Brand.FONTS).map(([k, f]) => `<option value="${k}" ${m.font === k ? 'selected' : ''}>${esc(f.label)}</option>`).join('')}</select></label>
             <p class="muted small" style="margin:0">The event name is used in email subjects and WhatsApp messages. On the site, its last word is shown in the highlight colour (e.g. AMG <b>2026</b>) unless you upload title artwork below.</p></div>
+
+          <div class="card stack"><h3>Full banner artwork (optional)</h3>
+            <div class="muted small">A finished banner with the logos and title already in it. When set, the site shows it exactly as designed instead of the logo, title and header image below.</div>
+            <div class="assetbox"><div class="thumb photo" id="bannerThumb"></div>
+              <div class="stack" style="flex:1"><b class="small">Desktop · about 1920 × 540</b>
+                <input type="file" class="input" id="bannerFile" accept="image/png,image/jpeg,image/webp">
+                <div class="row"><button class="btn sm ghost" id="rmBanner">Remove</button></div></div></div>
+            <div class="assetbox"><div class="thumb" id="bannerMobileThumb"></div>
+              <div class="stack" style="flex:1"><b class="small">Phone · about 1125 × 1460 (optional)</b>
+                <input type="file" class="input" id="bannerMobileFile" accept="image/png,image/jpeg,image/webp">
+                <div class="row"><button class="btn sm ghost" id="rmBannerMobile">Remove</button></div>
+                <div class="muted small">Shown on phones. Without it, phones get the desktop banner.</div></div></div></div>
 
           <div class="card stack"><h3>Logo</h3>
             <div class="assetbox"><div class="thumb" id="logoThumb"></div>
@@ -897,10 +912,11 @@
 
     const drawPreview = () => {
       const el = $('#preview');
-      const b = { ...m, logo: logoUrl(), heroImage: heroUrl(), titleArt: artUrl(), partnerLogos: partnerList().map((p) => p.url) };
+      const b = { ...m, logo: logoUrl(), heroImage: heroUrl(), titleArt: artUrl(), banner: bannerUrl(), bannerMobile: bannerMobileUrl(), partnerLogos: partnerList().map((p) => p.url) };
       window.Brand.apply(b, el);
       el.innerHTML = `
-        <header class="hero ${b.heroImage ? 'has-photo' : ''}">
+        <header class="hero ${b.heroImage ? 'has-photo' : ''} ${b.banner ? 'has-banner' : ''}">
+          ${b.banner ? `<picture class="banner-art"><img src="${esc(b.bannerMobile || b.banner)}" alt=""></picture>` : ''}
           <div class="hero-inner">
             <div class="top"><div class="brand">
               ${b.logo ? `<span class="brand-logo ${b.logoBadge ? 'badge' : ''}"><img src="${esc(b.logo)}" alt=""></span>` : ''}
@@ -924,7 +940,9 @@
         </div>`;
       $('#logoThumb').innerHTML = b.logo ? `<img src="${esc(b.logo)}" style="${b.logoBadge ? 'background:#fff;padding:6px;border-radius:8px' : ''}">` : 'No logo';
       // Set as a property: the background contains url("…"), which would break a quoted style attribute.
-      $('.hero', el).style.background = window.Brand.heroBackground(b);
+      if (!b.banner) $('.hero', el).style.background = window.Brand.heroBackground(b);
+      $('#bannerThumb').innerHTML = b.banner ? `<img src="${esc(b.banner)}">` : 'No banner';
+      $('#bannerMobileThumb').innerHTML = b.bannerMobile ? `<img src="${esc(b.bannerMobile)}">` : 'No phone banner';
       $('#heroThumb').innerHTML = b.heroImage ? `<img src="${esc(b.heroImage)}">` : 'No image';
       $('#artThumb').innerHTML = b.titleArt ? `<img src="${esc(b.titleArt)}">` : 'No artwork';
       $('#partnerThumbs').innerHTML = partnerList().map((p, i) => `<div class="assetbox" style="padding:6px;gap:6px">
@@ -960,6 +978,10 @@
     $('#logoBadge').onchange = (e) => { m.logoBadge = e.target.checked; drawPreview(); };
     $('#rmLogo').onclick = () => { m.logoFile = null; m.removeLogo = true; $('#logoFile').value = ''; drawPreview(); };
     $('#rmHero').onclick = () => { m.heroFile = null; m.removeHero = true; $('#heroFile').value = ''; drawPreview(); };
+    $('#bannerFile').onchange = (e) => { m.bannerFile = e.target.files[0] || null; m.removeBanner = false; drawPreview(); };
+    $('#bannerMobileFile').onchange = (e) => { m.bannerMobileFile = e.target.files[0] || null; m.removeBannerMobile = false; drawPreview(); };
+    $('#rmBanner').onclick = () => { m.bannerFile = null; m.removeBanner = true; $('#bannerFile').value = ''; drawPreview(); };
+    $('#rmBannerMobile').onclick = () => { m.bannerMobileFile = null; m.removeBannerMobile = true; $('#bannerMobileFile').value = ''; drawPreview(); };
     $('#artFile').onchange = (e) => { m.artFile = e.target.files[0] || null; m.removeTitleArt = false; drawPreview(); };
     $('#rmArt').onclick = () => { m.artFile = null; m.removeTitleArt = true; $('#artFile').value = ''; drawPreview(); };
     $('#partnerFile').onchange = (e) => {
@@ -983,6 +1005,10 @@
       fd.append('removeHero', m.removeHero);
       if (m.artFile) fd.append('titleArt', m.artFile);
       fd.append('removeTitleArt', m.removeTitleArt);
+      if (m.bannerFile) fd.append('banner', m.bannerFile);
+      if (m.bannerMobileFile) fd.append('bannerMobile', m.bannerMobileFile);
+      fd.append('removeBanner', m.removeBanner);
+      fd.append('removeBannerMobile', m.removeBannerMobile);
       m.partnerFiles.forEach((f) => fd.append('partners', f));
       fd.append('removePartners', JSON.stringify(m.removePartners));
       fd.append('heroTint', m.heroTint);
