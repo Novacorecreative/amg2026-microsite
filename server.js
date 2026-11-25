@@ -509,6 +509,27 @@ admin.put('/settings', (req, res) => {
   res.json({ ok: true });
 });
 
+// ----- WhatsApp invites sent by hand from the organiser's own WhatsApp (no WhatsApp Business account needed) -----
+const WA_INVITE_DEFAULT = "Hi {name}! 🌴 Welcome to {event}, Goa ({dates}).\n\nHere is your personal event link: {link}\n\nIt has your QR pass for check-in, the agenda, games and live updates. Please keep it handy and don't share it — it's just for you.";
+admin.get('/wa-invites', (_req, res) => {
+  res.json({
+    text: getSetting('wa_invite_text') || WA_INVITE_DEFAULT,
+    people: db.prepare('SELECT * FROM attendees ORDER BY name').all().map((a) => ({
+      id: a.id, name: a.name, company: a.company, phone: a.phone, wa_sent_at: a.wa_sent_at, link: personalLink(a),
+    })),
+  });
+});
+admin.put('/wa-invites/text', (req, res) => {
+  const text = String(req.body?.text || '').trim().slice(0, 1500);
+  if (!text.includes('{link}')) return bad(res, 'Keep {link} in the message: it becomes each person’s own link');
+  setSetting('wa_invite_text', text);
+  res.json({ ok: true });
+});
+admin.post('/wa-invites/:id/sent', (req, res) => {
+  db.prepare('UPDATE attendees SET wa_sent_at = ? WHERE id = ?').run(req.body?.sent === false ? null : now(), req.params.id);
+  res.json({ ok: true });
+});
+
 // ----- branding -----
 const brandUpload = upload.fields([
   { name: 'logo', maxCount: 1 }, { name: 'hero', maxCount: 1 }, { name: 'titleArt', maxCount: 1 }, { name: 'partners', maxCount: MAX_PARTNERS },

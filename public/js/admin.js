@@ -57,7 +57,7 @@
 
   // ---------- shell ----------
   const pages = {
-    dashboard: ['📊', 'Dashboard'], attendees: ['👥', 'Attendees'], updates: ['📣', 'Updates & videos'],
+    dashboard: ['📊', 'Dashboard'], attendees: ['👥', 'Attendees'], invites: ['💬', 'WhatsApp invites'], updates: ['📣', 'Updates & videos'],
     engage: ['🏆', 'Quizzes & polls'], wheels: ['🎡', 'Spin the wheel'], draws: ['🎁', 'Lucky draw'], stars: ['⭐', 'Star Spotlight'], agenda: ['🗓️', 'Agenda'], gallery: ['📸', 'Gallery'], broadcast: ['📲', 'Broadcast'],
     branding: ['🎨', 'Branding'], screen: ['📺', 'LED screen'],
   };
@@ -526,6 +526,79 @@
       </table></div>`;
   }
 
+  // ---------- WhatsApp invites (sent by hand from the organiser's own WhatsApp) ----------
+  async function renderInvites() {
+    const [d, cfg] = await Promise.all([api('/wa-invites'), fetch('/api/config').then((r) => r.json())]);
+    const day = (s) => new Date(s + 'T00:00:00+05:30');
+    const [s0, s1] = [day(cfg.startDate), day(cfg.endDate)];
+    const mon = (x) => x.toLocaleDateString('en-IN', { month: 'short', timeZone: 'Asia/Kolkata' });
+    const dates = mon(s0) === mon(s1) ? `${s0.getDate()}–${s1.getDate()} ${mon(s1)}` : `${s0.getDate()} ${mon(s0)}–${s1.getDate()} ${mon(s1)}`;
+    const fill = (text, a) => text.replaceAll('{name}', a.name.split(' ')[0]).replaceAll('{event}', cfg.eventName).replaceAll('{dates}', dates).replaceAll('{link}', a.link);
+    const waUrl = (a) => `https://wa.me/${a.phone.replace(/\D/g, '')}?text=${encodeURIComponent(fill(d.text, a))}`;
+    const withPhone = d.people.filter((a) => a.phone);
+    let show = 'todo', q = '';
+    page().innerHTML = `<h2 class="page">WhatsApp invites</h2>
+      <p class="muted" style="margin-top:-6px">Send each guest their personal link from <b>your own WhatsApp</b>, no business account needed. Each button opens WhatsApp with the message ready; you just press send. Use WhatsApp on your phone, or WhatsApp Web / Desktop signed in with the number guests should see.</p>
+      <div class="two">
+        <div class="card stack"><h3>Message</h3>
+          <textarea class="input" id="waText" rows="8" maxlength="1500">${esc(d.text)}</textarea>
+          <div class="muted small">{name} = first name · {link} = their personal link (required) · {event} · {dates}</div>
+          <div class="row"><span class="spacer"></span><button class="btn secondary" id="waSave">Save message</button></div>
+          <div class="muted small" style="font-weight:700;text-transform:uppercase;letter-spacing:.08em">Preview</div>
+          <div id="waPreview" style="white-space:pre-wrap;background:#e7fbd9;border-radius:10px;padding:12px;font-size:14px"></div>
+        </div>
+        <div class="card stack">
+          <div class="stats" style="grid-template-columns:repeat(3,1fr)">
+            <div class="stat"><b id="waDone"></b><span>sent</span></div>
+            <div class="stat"><b id="waLeft"></b><span>still to send</span></div>
+            <div class="stat"><b>${d.people.length - withPhone.length}</b><span>no mobile number</span></div>
+          </div>
+          <button class="btn block" id="waNext">💬 Send next invite</button>
+          <div class="muted small" style="margin-top:-4px">Opens WhatsApp for the next person not yet sent, and ticks them off. Come back here and press it again.</div>
+        </div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="row wrap"><input class="input" id="waQ" placeholder="Search name or number" style="max-width:260px">
+          <span class="spacer"></span>
+          <button class="btn sm" data-show="todo">Not sent</button><button class="btn sm ghost" data-show="done">Sent</button><button class="btn sm ghost" data-show="all">Everyone</button></div>
+        <div class="tablewrap" style="margin-top:10px"><table id="waTable"></table></div>
+      </div>`;
+    const preview = () => { $('#waPreview').textContent = d.people[0] ? fill($('#waText').value, d.people[0]) : ''; };
+    const counts = () => { const done = withPhone.filter((a) => a.wa_sent_at).length; $('#waDone').textContent = done; $('#waLeft').textContent = withPhone.length - done; };
+    const drawTable = () => {
+      const ql = q.toLowerCase();
+      const rows = d.people.filter((a) => (show === 'all' || (show === 'done') === !!a.wa_sent_at) && (!ql || `${a.name} ${a.phone || ''}`.toLowerCase().includes(ql)));
+      $('#waTable').innerHTML = '<tr><th>Name</th><th>Mobile</th><th>Status</th><th></th></tr>' + rows.map((a) => `<tr data-id="${a.id}">
+        <td><b>${esc(a.name)}</b><div class="muted small">${esc(a.company || '')}</div></td>
+        <td class="small">${a.phone ? '+' + esc(a.phone) : '<span class="muted">none</span>'}</td>
+        <td class="small">${a.wa_sent_at ? `✓ ${when(a.wa_sent_at)} <button class="btn sm ghost" data-unsend="${a.id}" title="Mark as not sent">↺</button>` : '<span class="muted">not sent</span>'}</td>
+        <td>${a.phone ? `<a class="btn sm ${a.wa_sent_at ? 'ghost' : ''}" href="${esc(waUrl(a))}" target="amg_wa" rel="noopener" data-send="${a.id}">💬 ${a.wa_sent_at ? 'Send again' : 'Send on WhatsApp'}</a>` : ''}</td></tr>`).join('')
+        || `<tr><td colspan="4" class="muted">${show === 'todo' ? 'Everyone with a number has been sent their invite 🎉' : 'Nobody here.'}</td></tr>`;
+    };
+    const markSent = async (a, sent = true) => {
+      await api(`/wa-invites/${a.id}/sent`, { method: 'POST', body: { sent } });
+      a.wa_sent_at = sent ? new Date().toISOString() : null;
+      counts(); drawTable();
+    };
+    preview(); counts(); drawTable();
+    $('#waText').oninput = preview;
+    $('#waSave').onclick = run(async () => { await api('/wa-invites/text', { method: 'PUT', body: { text: $('#waText').value } }); d.text = $('#waText').value.trim(); drawTable(); toast('Message saved'); });
+    $('#waQ').oninput = (e) => { q = e.target.value; drawTable(); };
+    $$('[data-show]').forEach((b) => (b.onclick = () => { show = b.dataset.show; $$('[data-show]').forEach((x) => x.classList.toggle('ghost', x !== b)); drawTable(); }));
+    // The link opens WhatsApp in its own tab; the click also ticks the guest off (↺ undoes it).
+    $('#waTable').onclick = (e) => {
+      const send = e.target.closest('[data-send]'), unsend = e.target.closest('[data-unsend]');
+      if (send) markSent(d.people.find((a) => a.id === Number(send.dataset.send))).catch((err) => toast(err.message, { error: true }));
+      if (unsend) markSent(d.people.find((a) => a.id === Number(unsend.dataset.unsend)), false).catch((err) => toast(err.message, { error: true }));
+    };
+    $('#waNext').onclick = () => {
+      const a = withPhone.find((x) => !x.wa_sent_at);
+      if (!a) return toast('Everyone with a number has been sent their invite 🎉');
+      window.open(waUrl(a), 'amg_wa');
+      markSent(a).then(() => toast(`Opened WhatsApp for ${a.name}`)).catch((err) => toast(err.message, { error: true }));
+    };
+  }
+
   // ---------- lucky draw ----------
   async function renderDraws() {
     const draws = await api('/draws');
@@ -927,6 +1000,6 @@
     refreshEmail();
   }
 
-  const renderers = { dashboard: renderDashboard, attendees: renderAttendees, updates: renderUpdates, engage: renderEngage, agenda: renderAgenda, gallery: renderGallery, broadcast: renderBroadcast, branding: renderBranding, wheels: renderWheels, screen: renderScreen, draws: renderDraws, stars: renderStars };
+  const renderers = { dashboard: renderDashboard, attendees: renderAttendees, updates: renderUpdates, engage: renderEngage, agenda: renderAgenda, gallery: renderGallery, broadcast: renderBroadcast, branding: renderBranding, wheels: renderWheels, screen: renderScreen, draws: renderDraws, stars: renderStars, invites: renderInvites };
   loadBrand().catch(() => {}).finally(route);
 })();
