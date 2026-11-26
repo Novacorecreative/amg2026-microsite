@@ -96,8 +96,16 @@ app.get('/api/config', (_req, res) => {
     helpdeskPhone: env('HELPDESK_PHONE'),
     helpdeskEmail: env('HELPDESK_EMAIL'),
     timezone: 'Asia/Kolkata',
+    ...agendaInfo(),
   });
 });
+
+// Agenda intro line and a theme title per day (e.g. "Arrival, Beach Experience & Star Achiever Awards").
+function agendaInfo() {
+  let days = {};
+  try { days = JSON.parse(getSetting('agenda_day_titles') || '{}') || {}; } catch { /* ignore */ }
+  return { agendaIntro: getSetting('agenda_intro') || '', agendaDayTitles: days };
+}
 
 // "Lost your link?" — always answers OK so nobody can probe who is registered.
 app.post('/api/resend-link', (req, res) => {
@@ -146,19 +154,30 @@ api.get('/feed', (_req, res) => {
 });
 
 api.get('/agenda', (_req, res) => {
-  res.json(db.prepare('SELECT * FROM sessions ORDER BY day, start_time').all());
+  res.json(db.prepare('SELECT * FROM sessions ORDER BY day, start_time, id').all());
 });
 
 api.get('/agenda.ics', (_req, res) => {
-  const rows = db.prepare('SELECT * FROM sessions ORDER BY day, start_time').all();
+  const rows = db.prepare('SELECT * FROM sessions ORDER BY day, start_time, id').all();
   const fmt = (day, t) => `${day.replace(/-/g, '')}T${t.replace(':', '')}00`;
   const escIcs = (s) => String(s || '').replace(/[\\;,]/g, (c) => '\\' + c).replace(/\n/g, '\\n');
   const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//AMG2026//Microsite//EN', 'CALSCALE:GREGORIAN'];
-  for (const s of rows) {
+  const stamp = `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`;
+  // Items without a fixed time go into one all-day event per day.
+  const { agendaDayTitles } = agendaInfo();
+  const untimed = Object.groupBy(rows.filter((s) => !s.start_time), (s) => s.day);
+  for (const [day, items] of Object.entries(untimed)) {
+    const next = new Date(`${day}T00:00:00Z`); next.setUTCDate(next.getUTCDate() + 1);
+    lines.push('BEGIN:VEVENT', `UID:amg2026-day-${day}@microsite`, stamp,
+      `DTSTART;VALUE=DATE:${day.replace(/-/g, '')}`, `DTEND;VALUE=DATE:${next.toISOString().slice(0, 10).replace(/-/g, '')}`,
+      `SUMMARY:${escIcs(agendaDayTitles[day] || getBranding().eventName)}`,
+      `DESCRIPTION:${escIcs(items.map((s) => '• ' + s.title).join('\n'))}`, 'END:VEVENT');
+  }
+  for (const s of rows.filter((x) => x.start_time)) {
     lines.push(
       'BEGIN:VEVENT',
       `UID:amg2026-session-${s.id}@microsite`,
-      `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
+      stamp,
       `DTSTART;TZID=Asia/Kolkata:${fmt(s.day, s.start_time)}`,
       `DTEND;TZID=Asia/Kolkata:${fmt(s.day, s.end_time)}`,
       `SUMMARY:${escIcs(s.title)}`,
@@ -745,21 +764,36 @@ admin.delete('/posts/:id', (req, res) => {
 admin.get('/posts', (_req, res) => res.json(db.prepare('SELECT * FROM posts ORDER BY pinned DESC, created_at DESC').all()));
 
 // ----- agenda -----
-admin.get('/sessions', (_req, res) => res.json(db.prepare('SELECT * FROM sessions ORDER BY day, start_time').all()));
+admin.get('/sessions', (_req, res) => res.json(db.prepare('SELECT * FROM sessions ORDER BY day, start_time, id').all()));
+// Times are optional (some agendas only list what happens each day); if given, both are needed.
+const sessionError = (s) => (!s.day || !s.title ? 'Date and title are required'
+  : !s.start_time !== !s.end_time ? 'Give both a start and an end time, or leave both blank' : null);
 admin.post('/sessions', (req, res) => {
   const s = req.body || {};
-  if (!s.day || !s.start_time || !s.end_time || !s.title) return bad(res, 'Day, start, end and title are required');
+  if (sessionError(s)) return bad(res, sessionError(s));
   const info = db.prepare('INSERT INTO sessions(day,start_time,end_time,title,speaker,location,description) VALUES (?,?,?,?,?,?,?)')
-    .run(s.day, s.start_time, s.end_time, s.title, s.speaker || null, s.location || null, s.description || null);
+    .run(s.day, s.start_time || '', s.end_time || '', s.title, s.speaker || null, s.location || null, s.description || null);
   live.sendAll('agenda', {});
   res.json({ id: Number(info.lastInsertRowid) });
 });
 admin.put('/sessions/:id', (req, res) => {
   const s = req.body || {};
+  if (sessionError(s)) return bad(res, sessionError(s));
   db.prepare('UPDATE sessions SET day=?,start_time=?,end_time=?,title=?,speaker=?,location=?,description=? WHERE id=?')
-    .run(s.day, s.start_time, s.end_time, s.title, s.speaker || null, s.location || null, s.description || null, req.params.id);
+    .run(s.day, s.start_time || '', s.end_time || '', s.title, s.speaker || null, s.location || null, s.description || null, req.params.id);
   live.sendAll('agenda', {});
   res.json({ ok: true });
+});
+admin.put('/agenda-info', (req, res) => {
+  const b = req.body || {};
+  const days = {};
+  for (const [d, t] of Object.entries(b.days || {})) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d) && String(t).trim()) days[d] = String(t).trim().slice(0, 120);
+  }
+  setSetting('agenda_intro', String(b.intro || '').trim().slice(0, 400) || null);
+  setSetting('agenda_day_titles', JSON.stringify(days));
+  live.sendAll('agenda', {});
+  res.json(agendaInfo());
 });
 admin.delete('/sessions/:id', (req, res) => {
   db.prepare('DELETE FROM sessions WHERE id = ?').run(req.params.id);
@@ -1186,7 +1220,7 @@ function screenData({ mode, id }) {
   // welcome: what's on now and next, in event time (IST)
   const ist = new Date(Date.now() + 5.5 * 3600e3).toISOString();
   const day = ist.slice(0, 10), hm = ist.slice(11, 16);
-  const sessions = db.prepare('SELECT title, day, start_time, end_time, location FROM sessions ORDER BY day, start_time').all();
+  const sessions = db.prepare('SELECT title, day, start_time, end_time, location FROM sessions ORDER BY day, start_time, id').all();
   return {
     current: sessions.find((s) => s.day === day && s.start_time <= hm && hm < s.end_time) || null,
     next: sessions.find((s) => s.day > day || (s.day === day && s.start_time > hm)) || null,

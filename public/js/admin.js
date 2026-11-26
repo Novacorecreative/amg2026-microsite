@@ -704,27 +704,39 @@
 
   // ---------- agenda ----------
   async function renderAgenda(editId) {
-    const list = await api('/sessions');
+    const [list, cfg] = await Promise.all([api('/sessions'), fetch('/api/config').then((r) => r.json())]);
     const cur = list.find((s) => s.id === Number(editId)) || {};
+    const eventDays = [];
+    for (let d = new Date(cfg.startDate + 'T00:00:00Z'); d <= new Date(cfg.endDate + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 1)) eventDays.push(d.toISOString().slice(0, 10));
     page().innerHTML = `<h2 class="page">Agenda</h2>
       <div class="two">
         <form class="card stack" id="sForm"><h3>${cur.id ? 'Edit session' : 'Add a session'}</h3>
           <div class="formgrid">
             <label class="field full">Title<input class="input" name="title" required value="${esc(cur.title || '')}"></label>
             <label class="field full">Date<input class="input" type="date" name="day" required value="${esc(cur.day || list[list.length - 1]?.day || '')}"></label>
-            <label class="field">Starts<input class="input" type="time" name="start_time" required value="${esc(cur.start_time || '')}"></label>
-            <label class="field">Ends<input class="input" type="time" name="end_time" required value="${esc(cur.end_time || '')}"></label>
+            <label class="field">Starts<input class="input" type="time" name="start_time" value="${esc(cur.start_time || '')}"></label>
+            <label class="field">Ends<input class="input" type="time" name="end_time" value="${esc(cur.end_time || '')}"></label>
             <label class="field">Speaker / host<input class="input" name="speaker" value="${esc(cur.speaker || '')}"></label>
             <label class="field">Location<input class="input" name="location" value="${esc(cur.location || '')}"></label>
             <label class="field full">Details<textarea class="input" name="description" rows="3">${esc(cur.description || '')}</textarea></label>
           </div>
           <div class="row">${cur.id ? '<a class="btn ghost" href="#agenda">Cancel</a>' : ''}<span class="spacer"></span><button class="btn">${cur.id ? 'Save' : 'Add session'}</button></div>
-          <p class="muted small">Times are India time (IST). Guests see changes instantly.</p></form>
+          <p class="muted small">Times are India time (IST); leave both blank if there's no fixed time. Guests see changes instantly.</p></form>
         <div class="card tablewrap"><table><tr><th>Date</th><th>Time</th><th>Session</th><th></th></tr>
-          ${list.map((s) => `<tr><td class="small">${esc(s.day)}</td><td class="small">${esc(s.start_time)}–${esc(s.end_time)}</td><td><b>${esc(s.title)}</b><div class="muted small">${esc([s.speaker, s.location].filter(Boolean).join(' · '))}</div></td>
+          ${list.map((s) => `<tr><td class="small">${esc(s.day)}</td><td class="small">${s.start_time ? `${esc(s.start_time)}–${esc(s.end_time)}` : '<span class="muted">no time</span>'}</td><td><b>${esc(s.title)}</b><div class="muted small">${esc([s.speaker, s.location].filter(Boolean).join(' · '))}</div></td>
             <td><div class="row"><a class="btn sm ghost" href="#agenda/${s.id}">Edit</a><button class="btn sm ghost" data-del="${s.id}">🗑</button></div></td></tr>`).join('') || '<tr><td colspan="4" class="muted">No sessions yet</td></tr>'}
         </table></div>
-      </div>`;
+      </div>
+      <form class="card stack" id="infoForm" style="margin-top:14px"><h3>Agenda intro &amp; day themes</h3>
+        <label class="field">Intro line (shown at the top of the guest agenda)<textarea class="input" name="intro" rows="2" maxlength="400">${esc(cfg.agendaIntro || '')}</textarea></label>
+        <div class="formgrid">${eventDays.map((d, i) => `<label class="field full">Day ${i + 1} · ${esc(d)} theme<input class="input" data-day="${d}" maxlength="120" value="${esc(cfg.agendaDayTitles?.[d] || '')}"></label>`).join('')}</div>
+        <div class="row"><span class="spacer"></span><button class="btn secondary">Save intro &amp; themes</button></div></form>`;
+    $('#infoForm').onsubmit = run(async (e) => {
+      e.preventDefault();
+      const days = Object.fromEntries([...e.target.querySelectorAll('[data-day]')].map((i) => [i.dataset.day, i.value]));
+      await api('/agenda-info', { method: 'PUT', body: { intro: e.target.intro.value, days } });
+      toast('Agenda intro & themes saved');
+    });
     $('#sForm').onsubmit = run(async (e) => {
       e.preventDefault();
       const body = Object.fromEntries(new FormData(e.target));

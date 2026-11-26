@@ -2,7 +2,7 @@
 (() => {
   const $ = (s, el = document) => el.querySelector(s);
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const hm12 = (t) => { const [h, m] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'}`; };
+  const hm12 = (t) => { if (!t) return ''; const [h, m] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'am' : 'pm'}`; };
   const fmtDay = (d) => new Date(d + 'T00:00:00+05:30').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' });
   const app = $('#app');
   let adminToken = localStorage.getItem('amg_admin'); // same sign-in as the admin panel and check-in desk
@@ -32,7 +32,7 @@
   const views = {
     welcome(d) {
       const b = cfg.branding;
-      const slot = (label, s) => `<div><div class="kicker">${label}</div>${s ? `<h3>${esc(s.title)}</h3><div class="when">${fmtDay(s.day)} · ${hm12(s.start_time)}${s.location ? ' · ' + esc(s.location) : ''}</div>` : '<h3>Nothing scheduled</h3>'}</div>`;
+      const slot = (label, s) => `<div><div class="kicker">${label}</div>${s ? `<h3>${esc(s.title)}</h3><div class="when">${fmtDay(s.day)}${s.start_time ? ' · ' + hm12(s.start_time) : ''}${s.location ? ' · ' + esc(s.location) : ''}</div>` : '<h3>Nothing scheduled</h3>'}</div>`;
       return `${b.titleArt ? `<img class="title-art" src="${esc(b.titleArt)}" alt="${esc(b.eventName)}">` : `<h1 class="big">${esc(b.eventName)}</h1>`}
         <div class="muted2" style="margin-top:2vmin">${esc(cfg.city)} · ${fmtDay(cfg.startDate)} – ${fmtDay(cfg.endDate)}</div>
         <div class="nn">${slot(d.current ? '● Happening now' : 'Right now', d.current)}${slot('Up next', d.next)}</div>`;

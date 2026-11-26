@@ -26,7 +26,7 @@
       .formatToParts(new Date()).map((x) => [x.type, x.value]));
     return { day: `${p.year}-${p.month}-${p.day}`, hm: `${p.hour}:${p.minute}` };
   }
-  const hm12 = (t) => { const [h, m] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
+  const hm12 = (t) => { if (!t) return ''; const [h, m] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}:${String(m).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'}`; };
 
   function toast(msg, opts = {}) {
     const t = document.createElement('div');
@@ -164,7 +164,7 @@
     return { current, next };
   }
   function sessionLine(s) {
-    return `<div class="muted small">${fmtDay(s.day)} · ${hm12(s.start_time)}–${hm12(s.end_time)}${s.location ? ' · ' + esc(s.location) : ''}</div>`;
+    return `<div class="muted small">${fmtDay(s.day)}${s.start_time ? ` · ${hm12(s.start_time)}–${hm12(s.end_time)}` : ''}${s.location ? ' · ' + esc(s.location) : ''}</div>`;
   }
   function youtubeEmbed(link) {
     const m = String(link || '').match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|live\/|embed\/|shorts\/))([\w-]{11})/);
@@ -189,6 +189,7 @@
     state.agenda = agenda; state.activities = acts;
     updateEngageDot();
     const { current, next } = nowNext();
+    const todayTheme = state.cfg.agendaDayTitles?.[istNow().day];
     const live = acts.filter((a) => a.status === 'live' && !a.my_submitted_at);
     const inAt = state.me.checked_in_at;
     view.innerHTML = `
@@ -205,7 +206,7 @@
         <div class="now-card">
           <div class="slot ${current ? 'on' : ''}">
             <div class="label">${current ? '● Happening now' : 'Right now'}</div>
-            ${current ? `<h3>${esc(current.title)}</h3>${sessionLine(current)}` : `<h3>${state.cfg && new Date(state.cfg.startDate + 'T00:00:00+05:30') > Date.now() ? 'See you in ' + esc(state.cfg.city) + '!' : 'Free time'}</h3><div class="muted small">Nothing scheduled this minute</div>`}
+            ${current ? `<h3>${esc(current.title)}</h3>${sessionLine(current)}` : todayTheme ? `<h3>${esc(todayTheme)}</h3><div class="muted small">Today’s programme · see the Agenda</div>` : `<h3>${state.cfg && new Date(state.cfg.startDate + 'T00:00:00+05:30') > Date.now() ? 'See you in ' + esc(state.cfg.city) + '!' : 'Free time'}</h3><div class="muted small">Nothing scheduled this minute</div>`}
           </div>
           <div class="slot">
             <div class="label">Up next</div>
@@ -241,19 +242,23 @@
     if (!agendaDay || !days.includes(agendaDay)) agendaDay = days.includes(today) ? today : days[0];
     if (!days.length) { view.innerHTML = '<div class="card empty"><div class="em">🗓️</div>The agenda will be published soon.</div>'; return; }
     const list = state.agenda.filter((s) => s.day === agendaDay);
+    const timed = list.some((s) => s.start_time);
+    const dayTitle = state.cfg.agendaDayTitles?.[agendaDay];
     view.innerHTML = `
       <div class="card">
         <div class="row wrap"><h2 style="font-size:20px">Agenda</h2><span class="spacer"></span>
           <a class="btn sm ghost" href="/api/agenda.ics?t=${encodeURIComponent(token)}">＋ Add to my calendar</a></div>
+        ${state.cfg.agendaIntro ? `<p class="muted small" style="margin:6px 0 0">${esc(state.cfg.agendaIntro)}</p>` : ''}
         <div class="daytabs" style="margin-top:14px">
           ${days.map((d, i) => `<button data-day="${d}" class="${d === agendaDay ? 'active' : ''}"><small>Day ${i + 1}</small><b>${fmtDay(d)}</b></button>`).join('')}
         </div>
-        <div class="timeline">
+        ${dayTitle ? `<h3 class="day-title">${esc(dayTitle)}</h3>` : ''}
+        <div class="timeline ${timed ? '' : 'untimed'}">
           ${list.map((s) => {
-            const past = s.day < today || (s.day === today && s.end_time <= hm);
+            const past = s.day < today || (s.day === today && s.end_time && s.end_time <= hm);
             const now = s.day === today && s.start_time <= hm && hm < s.end_time;
             return `<div class="session ${past ? 'past' : ''} ${now ? 'now' : ''}">
-              <div class="time">${hm12(s.start_time)}<small>to ${hm12(s.end_time)}</small></div>
+              ${timed ? `<div class="time">${s.start_time ? `${hm12(s.start_time)}<small>to ${hm12(s.end_time)}</small>` : ''}</div>` : ''}
               <div>
                 ${now ? '<span class="pill live">Live now</span>' : ''}
                 <h3>${esc(s.title)}</h3>

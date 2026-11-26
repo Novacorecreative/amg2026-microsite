@@ -184,6 +184,10 @@ main { max-width: 980px; margin: -44px auto 0; padding: 0 16px 110px; position: 
 .session .time small { display: block; font-family: var(--font-body); color: var(--muted); font-weight: 400; font-size: 12px; }
 .session h3 { font-size: 16px; }
 .session.past { opacity: .55; }
+.day-title { margin-top: 16px; font-size: 17px; color: var(--teal-700); }
+/* a day with no fixed times: a simple list with a dot instead of the time column */
+.timeline.untimed .session { grid-template-columns: 1fr; padding-left: 20px; position: relative; }
+.timeline.untimed .session::before { content: ''; position: absolute; left: 4px; top: 21px; width: 7px; height: 7px; border-radius: 50%; background: var(--coral); }
 .session.now { background: linear-gradient(90deg, color-mix(in srgb, var(--coral) 10%, #fff), transparent); border-radius: 12px; padding-left: 10px; margin-left: -10px; }
 
 /* activities */
