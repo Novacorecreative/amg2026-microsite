@@ -111,18 +111,15 @@ function agendaInfo() {
 // "Lost your link?" — always answers OK so nobody can probe who is registered.
 app.post('/api/resend-link', (req, res) => {
   const contact = String(req.body?.contact || '').trim();
-  if (contact) {
-    const phone = normalisePhone(contact);
-    const a = contact.includes('@')
-      ? db.prepare('SELECT * FROM attendees WHERE lower(email) = lower(?)').get(contact)
-      : db.prepare('SELECT * FROM attendees').all().find((x) => x.phone && normalisePhone(x.phone) === phone);
+  if (contact.includes('@')) { // email only: WhatsApp sending isn't connected
+    const a = db.prepare('SELECT * FROM attendees WHERE lower(email) = lower(?)').get(contact);
     if (a) {
       broadcast({
         title: 'Your personal access link',
         waHeadline: 'here is your personal access link',
         message: 'Tap the button below to open the event microsite. You will stay signed in on this device.',
         attendeeIds: [a.id],
-        channels: contact.includes('@') ? ['email'] : ['whatsapp'],
+        channels: ['email'],
       });
     }
   }
@@ -156,13 +153,14 @@ app.post('/api/register', (req, res) => {
   }
   const known = byEmail || byPhone;
   if (known) {
-    const viaEmail = !!known.email;
+    // Links go by email only (WhatsApp sending isn't connected).
+    if (!known.email) return res.json({ sent: 'none' });
     broadcast({
       title: 'Your personal access link', waHeadline: 'here is your personal access link',
       message: 'Tap the button below to open the event microsite. You will stay signed in on this device.',
-      attendeeIds: [known.id], channels: [viaEmail ? 'email' : 'whatsapp'],
+      attendeeIds: [known.id], channels: ['email'],
     });
-    return res.json({ sent: viaEmail ? 'email' : 'whatsapp' });
+    return res.json({ sent: 'email' });
   }
   const token = newToken();
   db.prepare('INSERT INTO attendees(name,email,phone,token,registered_at,self_added) VALUES (?,?,?,?,?,1)').run(name, email, phone, token, now());

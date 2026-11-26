@@ -137,8 +137,8 @@
         <div id="joinOut"></div>
         <hr style="border:0;border-top:1px solid var(--line);margin:4px 0">
         <form id="resendForm" class="stack">
-          <label class="field">Lost your link? Enter your registered email or mobile number
-            <input class="input" name="contact" required placeholder="name@company.com or 98xxxxxxxx" autocomplete="email">
+          <label class="field">Already joined on another phone? Enter your registered email and we'll email you your link
+            <input class="input" name="contact" required type="email" placeholder="name@company.com" autocomplete="email">
           </label>
           <button class="btn block secondary">Send me my link</button>
         </form>
@@ -151,7 +151,9 @@
         const out = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(out.error || 'Something went wrong, please try again');
         if (out.token) { localStorage.setItem('amg_token', out.token); location.replace('/'); return; }
-        e.target.outerHTML = `<p class="pill ok" style="white-space:normal">You're already on the guest list with a different ${out.sent === 'email' ? 'mobile number' : 'email'}. We've sent your personal link to your registered ${out.sent === 'email' ? 'email' : 'WhatsApp number'}.</p>`;
+        e.target.outerHTML = out.sent === 'email'
+          ? '<p class="pill ok" style="white-space:normal">You\'re already on the guest list with different details. We\'ve emailed your personal link to your registered email address.</p>'
+          : '<p class="pill gold" style="white-space:normal">You\'re already on the guest list with different details. Please contact the help desk to get your link.</p>';
       } catch (err) { $('#joinOut').innerHTML = `<p class="small" style="color:var(--coral-dark)">${esc(err.message)}</p>`; btn.disabled = false; }
     };
     $('#resendForm').onsubmit = async (e) => {
