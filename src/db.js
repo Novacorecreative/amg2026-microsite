@@ -187,6 +187,7 @@ const hasCol = (table, col) => db.prepare(`PRAGMA table_info(${table})`).all().s
 if (!hasCol('attendees', 'checked_in_at')) db.exec('ALTER TABLE attendees ADD COLUMN checked_in_at TEXT');
 if (!hasCol('activities', 'image_path')) db.exec('ALTER TABLE activities ADD COLUMN image_path TEXT'); // artwork shown above a quiz/poll
 if (!hasCol('attendees', 'wa_sent_at')) db.exec('ALTER TABLE attendees ADD COLUMN wa_sent_at TEXT'); // invite sent from the organiser's own WhatsApp
+if (!hasCol('wheels', 'win_chance')) db.exec('ALTER TABLE wheels ADD COLUMN win_chance INTEGER'); // % of spins that land on a prize; null = every segment equally likely
 if (!hasCol('activities', 'cta_box')) db.exec('ALTER TABLE activities ADD COLUMN cta_box TEXT'); // JSON {x,y,w,h} in % : the artwork's button, made to glow
 
 function getSetting(key, fallback = null) {

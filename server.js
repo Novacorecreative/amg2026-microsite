@@ -362,7 +362,14 @@ api.post('/wheels/:id/spin', (req, res) => {
   // The server picks the result, so it can't be gamed and limited prizes never run over.
   const open = wheelAvailable(wheel).filter((p) => p.left == null || p.left > 0);
   if (!open.length) return bad(res, 'All the prizes on this wheel have been won');
-  const pick = open[crypto.randomInt(open.length)];
+  // With a win chance set, first decide win or miss, then pick a segment of that kind (prizes still need stock).
+  let pool = open;
+  if (wheel.win_chance != null) {
+    const wins = open.filter((p) => p.win !== false), misses = open.filter((p) => p.win === false);
+    const wantWin = crypto.randomInt(100) < wheel.win_chance;
+    pool = (wantWin ? wins : misses).length ? (wantWin ? wins : misses) : open;
+  }
+  const pick = pool[crypto.randomInt(pool.length)];
   const win = pick.win !== false;
   db.prepare('INSERT INTO wheel_spins(wheel_id, attendee_id, prize_index, label, win) VALUES (?,?,?,?,?)').run(wheel.id, req.me.id, pick.i, pick.label, win ? 1 : 0);
   live.sendAll('wheel-spin', { id: wheel.id });
@@ -973,6 +980,7 @@ admin.delete('/activities/:id', (req, res) => {
 admin.get('/leaderboard', (_req, res) => res.json(leaderboard()));
 
 // ----- spin the wheel -----
+const cleanChance = (v) => (v === '' || v == null ? null : Math.min(100, Math.max(0, Math.round(Number(v)) || 0)));
 function cleanPrizes(list) {
   if (!Array.isArray(list)) throw new Error('Add the wheel’s segments');
   const prizes = list.map((p) => ({
@@ -997,8 +1005,8 @@ admin.post('/wheels', (req, res) => {
   const b = req.body || {};
   if (!String(b.title || '').trim()) return bad(res, 'Give the wheel a title');
   try {
-    const info = db.prepare('INSERT INTO wheels(title, description, prizes) VALUES (?,?,?)')
-      .run(String(b.title).trim().slice(0, 80), String(b.description || '').trim().slice(0, 200) || null, cleanPrizes(b.prizes));
+    const info = db.prepare('INSERT INTO wheels(title, description, prizes, win_chance) VALUES (?,?,?,?)')
+      .run(String(b.title).trim().slice(0, 80), String(b.description || '').trim().slice(0, 200) || null, cleanPrizes(b.prizes), cleanChance(b.win_chance));
     res.json({ id: Number(info.lastInsertRowid) });
   } catch (e) { bad(res, e.message); }
 });
@@ -1012,8 +1020,8 @@ admin.put('/wheels/:id', (req, res) => {
     // Spins remember which segment they landed on, so the segment list is fixed once anyone has spun.
     const spun = db.prepare('SELECT COUNT(*) n FROM wheel_spins WHERE wheel_id = ?').get(w.id).n;
     if (spun && JSON.parse(prizes).length !== JSON.parse(w.prizes).length) return bad(res, 'People have already spun, so segments can’t be added or removed now — you can still rename them or change quantities');
-    db.prepare('UPDATE wheels SET title = ?, description = ?, prizes = ? WHERE id = ?')
-      .run(String(b.title || w.title).trim().slice(0, 80), String(b.description ?? '').trim().slice(0, 200) || null, prizes, w.id);
+    db.prepare('UPDATE wheels SET title = ?, description = ?, prizes = ?, win_chance = ? WHERE id = ?')
+      .run(String(b.title || w.title).trim().slice(0, 80), String(b.description ?? '').trim().slice(0, 200) || null, prizes, cleanChance(b.win_chance), w.id);
     live.sendAll('wheel', { id: w.id });
     res.json({ ok: true });
   } catch (e) { bad(res, e.message); }

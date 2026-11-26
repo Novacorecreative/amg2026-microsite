@@ -467,8 +467,8 @@
 
   function wheelEditor(w) {
     const spun = w ? w.spins > 0 : false;
-    const m = w ? { title: w.title, description: w.description || '', prizes: w.prizes.map((p) => ({ label: p.label, qty: p.qty, win: p.win !== false })) }
-      : { title: 'Lucky Spin', description: '', prizes: [
+    const m = w ? { title: w.title, description: w.description || '', win_chance: w.win_chance ?? '', prizes: w.prizes.map((p) => ({ label: p.label, qty: p.qty, win: p.win !== false })) }
+      : { title: 'Lucky Spin', description: '', win_chance: '', prizes: [
         { label: 'Goa Goodie Bag', qty: 20, win: true }, { label: 'Better luck next time', qty: null, win: false },
         { label: 'Spa Voucher', qty: 5, win: true }, { label: 'Try again later', qty: null, win: false },
         { label: 'Coffee Mug', qty: 30, win: true }, { label: 'Smart Watch', qty: 1, win: true }] };
@@ -488,11 +488,14 @@
               <td><input type="checkbox" data-f="win" ${p.win ? 'checked' : ''} style="width:18px;height:18px"></td>
               <td>${!spun && m.prizes.length > 2 ? '<button class="btn sm ghost" data-rm title="Remove">✕</button>' : ''}</td></tr>`).join('')}
           </table>
+          <label class="field" style="max-width:420px">Chance of winning a prize (%)
+            <input class="input" id="wChance" type="number" min="0" max="100" value="${m.win_chance}" placeholder="Leave empty: every segment equally likely"></label>
+          <div class="muted small" style="margin-top:-6px">e.g. 20 = about 1 in 5 spins lands on a prize, the rest on a non-prize segment (needs at least one segment with <i>Counts as a prize</i> unticked). Guests never see this number.</div>
           <div class="muted small">Leave <i>How many</i> empty for no limit (good for "Better luck next time"). Untick <i>Counts as a prize</i> for segments that aren't a win, so they stay out of the winners list. Once a prize runs out, the wheel stops landing on it.</div>
           <div class="row wrap">${!spun && m.prizes.length < 12 ? '<button class="btn ghost" id="addSeg">＋ Add segment</button>' : ''}<span class="spacer"></span><button class="btn" id="saveWheel">${w ? 'Save changes' : 'Save as draft'}</button></div>
         </div>`;
       const sync = () => {
-        m.title = $('#wTitle').value; m.description = $('#wDesc').value;
+        m.title = $('#wTitle').value; m.description = $('#wDesc').value; m.win_chance = $('#wChance').value;
         $$('tr[data-i]').forEach((tr) => {
           const p = m.prizes[Number(tr.dataset.i)];
           p.label = $('[data-f=label]', tr).value;

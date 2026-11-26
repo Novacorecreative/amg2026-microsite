@@ -361,12 +361,18 @@
     const pt = (deg) => { const r = (deg * Math.PI) / 180; return `${(100 * Math.sin(r)).toFixed(2)} ${(-100 * Math.cos(r)).toFixed(2)}`; };
     const color = (i) => WHEEL_COLORS[(i === n - 1 && n % WHEEL_COLORS.length === 1 ? 1 : i) % WHEEL_COLORS.length];
     const short = (t) => (t.length > 16 ? t.slice(0, 15) + '…' : t);
+    // Long names go on two lines, split at the space nearest the middle.
+    const labelText = (t) => {
+      if (t.length <= 15 || !t.includes(' ')) return esc(short(t));
+      const cut = [...t.matchAll(/ /g)].map((m) => m.index).reduce((a, b) => (Math.abs(b - t.length / 2) < Math.abs(a - t.length / 2) ? b : a));
+      return [t.slice(0, cut), t.slice(cut + 1)].map((ln, k) => `<tspan x="0" dy="${k ? '1.1em' : '-0.55em'}">${esc(short(ln))}</tspan>`).join('');
+    };
     return `<svg viewBox="-110 -110 220 220" class="wheel-svg" role="img" aria-label="Prize wheel: ${esc(labels.join(', '))}">
       <circle r="106" fill="var(--teal-900)"/>
       <g id="wheelRot">${labels.map((l, i) => {
         const [bg, fg] = color(i), mid = (i + 0.5) * seg;
         return `<path d="M0 0 L${pt(i * seg)} A100 100 0 ${seg > 180 ? 1 : 0} 1 ${pt((i + 1) * seg)} Z" fill="${bg}" stroke="#fff" stroke-width="1.2"/>
-          <g transform="rotate(${mid})"><text x="0" y="-56" transform="rotate(${mid > 180 ? 90 : -90} 0 -56)" text-anchor="middle" dominant-baseline="middle" fill="${fg}" font-size="${n > 8 ? 7.5 : 9}" font-weight="700">${esc(short(l))}</text></g>`;
+          <g transform="rotate(${mid})"><text x="0" y="-56" transform="rotate(${mid > 180 ? 90 : -90} 0 -56)" text-anchor="middle" dominant-baseline="middle" fill="${fg}" font-size="${n > 8 ? 7.5 : 9}" font-weight="700">${labelText(l)}</text></g>`;
       }).join('')}</g>
       <circle r="13" fill="#fff" stroke="var(--teal-900)" stroke-width="3"/>
       <path d="M-9 -112 L9 -112 L0 -92 Z" fill="var(--gold)" stroke="#fff" stroke-width="2"/>
