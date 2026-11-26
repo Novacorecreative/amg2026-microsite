@@ -143,7 +143,24 @@
   // ---------- attendees ----------
   async function renderAttendees() {
     const list = await api('/attendees');
+    const joinUrl = location.origin + '/';
+    const signedUp = list.filter((a) => a.registered_at).length, opened = list.filter((a) => a.last_seen).length, newcomers = list.filter((a) => a.self_added).length;
     page().innerHTML = `<h2 class="page">Attendees <span class="muted" style="font-size:16px">${list.length}</span></h2>
+      <div class="card row wrap" style="gap:18px;margin-bottom:14px;align-items:center">
+        <img src="/api/admin/join-qr.png?a=${encodeURIComponent(adminToken)}" alt="Join QR code" style="width:120px;height:120px;border-radius:8px;background:#fff">
+        <div class="stack" style="flex:1;min-width:240px">
+          <h3 style="margin:0">One link for everyone</h3>
+          <div class="muted small">Share this link or QR. Guests enter their name, mobile and email and they're in. People on your list are matched automatically; anyone new is added and marked <span class="pill gold">New</span>.</div>
+          <div class="row wrap"><code style="background:var(--sand-100);padding:6px 10px;border-radius:8px">${esc(joinUrl)}</code>
+            <button class="btn sm ghost" id="copyJoin">Copy link</button>
+            <a class="btn sm secondary" href="/api/admin/join-qr.png?a=${encodeURIComponent(adminToken)}" download="AMG2026-join-QR.png">Download QR</a>
+            <a class="btn sm ghost" href="/api/admin/attendees.csv?a=${encodeURIComponent(adminToken)}">⬇ Download list (CSV)</a></div>
+        </div>
+        <div class="stats" style="grid-template-columns:repeat(3,auto);gap:10px">
+          <div class="stat"><b>${signedUp}</b><span>signed up</span></div>
+          <div class="stat"><b>${opened}</b><span>opened the site</span></div>
+          <div class="stat"><b>${newcomers}</b><span>new (not on list)</span></div></div>
+      </div>
       <div class="two">
         <div>
           <form class="card stack" id="addForm"><h3>Add one person</h3>
@@ -169,10 +186,11 @@
     const draw = (q = '') => {
       q = q.toLowerCase();
       const rows = list.filter((a) => `${a.name} ${a.email} ${a.phone} ${a.company}`.toLowerCase().includes(q));
-      $('#attTable').innerHTML = `<tr><th>Name</th><th>Contact</th><th>Company</th><th>Last seen</th><th>Link</th><th></th></tr>` + rows.map((a) => `
-        <tr><td><b>${esc(a.name)}</b><div class="muted small">${esc(a.designation || '')}</div></td>
+      $('#attTable').innerHTML = `<tr><th>Name</th><th>Contact</th><th>Company</th><th>Joined</th><th>Last seen</th><th>Link</th><th></th></tr>` + rows.map((a) => `
+        <tr><td><b>${esc(a.name)}</b> ${a.self_added ? '<span class="pill gold" title="Signed up but not on your imported list">New</span>' : ''}<div class="muted small">${esc(a.designation || '')}</div></td>
           <td class="small">${esc(a.email || '—')}<br>${a.phone ? '+' + esc(a.phone) : '—'}</td>
           <td>${esc(a.company || '')}</td>
+          <td class="small">${a.registered_at ? '✓ ' + when(a.registered_at) : '<span class="muted">—</span>'}</td>
           <td class="small">${a.last_seen ? when(a.last_seen) : '<span class="muted">Not yet</span>'}</td>
           <td><button class="btn sm ghost" data-copy="${esc(a.link)}">Copy link</button></td>
           <td><div class="row"><button class="btn sm secondary" data-send="${a.id}">Send link</button>
@@ -185,6 +203,7 @@
     };
     draw();
     $('#q').oninput = (e) => draw(e.target.value);
+    $('#copyJoin').onclick = () => { navigator.clipboard.writeText(joinUrl); toast('Join link copied'); };
     $('#addForm').onsubmit = run(async (e) => {
       e.preventDefault();
       const out = await api('/attendees', { method: 'POST', body: Object.fromEntries(new FormData(e.target)) });

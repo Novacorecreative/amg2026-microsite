@@ -9,7 +9,7 @@ const express = require('express');
 const multer = require('multer');
 const QRCode = require('qrcode');
 const { db, getSetting, setSetting, tx } = require('./src/db');
-const { broadcast, channelStatus, personalLink, normalisePhone, emailHtml } = require('./src/notify');
+const { broadcast, channelStatus, personalLink, normalisePhone, emailHtml, BASE_URL } = require('./src/notify');
 const live = require('./src/live');
 const { getBranding, isHex, partnerFiles, HERO_TINTS, FONTS, MAX_PARTNERS } = require('./src/branding');
 
@@ -25,6 +25,7 @@ if (!ADMIN_PASSWORD) {
 }
 
 const app = express();
+app.set('trust proxy', 1); // Render's proxy: req.ip is the guest's address, not the proxy's
 app.disable('x-powered-by');
 app.use(express.json({ limit: '1mb' }));
 app.use(express.text({ type: 'text/csv', limit: '2mb' }));
@@ -126,6 +127,46 @@ app.post('/api/resend-link', (req, res) => {
     }
   }
   res.json({ ok: true });
+});
+
+// Self sign-up from the one shared join link / QR.
+// Someone on the list whose email AND mobile both match is signed straight in; if only one matches,
+// their link is sent to the contact we already have (so nobody can take over a colleague's pass by
+// typing their email). People not on the list are added and flagged for the organisers.
+const signups = new Map(); // ip -> recent sign-up times
+app.post('/api/register', (req, res) => {
+  const ip = req.ip, t = Date.now();
+  const recent = (signups.get(ip) || []).filter((x) => t - x < 10 * 60_000); // shortcut: in-memory, resets on restart; fine for one event
+  if (recent.length >= 60) return bad(res, 'Too many sign-ups from this network. Please try again in a few minutes.', 429);
+  signups.set(ip, [...recent, t]);
+
+  const b = req.body || {};
+  const name = String(b.name || '').trim().replace(/\s+/g, ' ').slice(0, 80);
+  const email = String(b.email || '').trim().toLowerCase();
+  const phone = normalisePhone(b.phone);
+  if (name.length < 2) return bad(res, 'Please enter your full name');
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return bad(res, 'Please enter a valid email address');
+  if (!/^\d{11,13}$/.test(phone)) return bad(res, 'Please enter a valid mobile number');
+
+  const byEmail = db.prepare('SELECT * FROM attendees WHERE lower(email) = ?').get(email);
+  const byPhone = db.prepare('SELECT * FROM attendees WHERE phone = ?').get(phone);
+  if (byEmail && byPhone && byEmail.id === byPhone.id) {
+    db.prepare('UPDATE attendees SET registered_at = COALESCE(registered_at, ?) WHERE id = ?').run(now(), byEmail.id);
+    return res.json({ token: byEmail.token });
+  }
+  const known = byEmail || byPhone;
+  if (known) {
+    const viaEmail = !!known.email;
+    broadcast({
+      title: 'Your personal access link', waHeadline: 'here is your personal access link',
+      message: 'Tap the button below to open the event microsite. You will stay signed in on this device.',
+      attendeeIds: [known.id], channels: [viaEmail ? 'email' : 'whatsapp'],
+    });
+    return res.json({ sent: viaEmail ? 'email' : 'whatsapp' });
+  }
+  const token = newToken();
+  db.prepare('INSERT INTO attendees(name,email,phone,token,registered_at,self_added) VALUES (?,?,?,?,?,1)').run(name, email, phone, token, now());
+  res.json({ token });
 });
 
 // ---------------- attendee ----------------
@@ -649,6 +690,18 @@ function upsertAttendee(p) {
   return { id: Number(info.lastInsertRowid), created: true };
 }
 
+// The one shared link + QR for self sign-up (the site's own address).
+admin.get('/join-qr.png', wrap(async (_req, res) => {
+  res.set('Content-Type', 'image/png').send(await QRCode.toBuffer(BASE_URL() + '/', { width: 1200, margin: 2, errorCorrectionLevel: 'M' }));
+}));
+admin.get('/attendees.csv', (_req, res) => {
+  const cell = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+  const rows = db.prepare('SELECT * FROM attendees ORDER BY name').all();
+  const lines = [['Name', 'Email', 'Mobile', 'Company', 'Designation', 'On guest list', 'Signed up via QR', 'Last opened site', 'Checked in']]
+    .concat(rows.map((a) => [a.name, a.email, a.phone ? '+' + a.phone : '', a.company, a.designation, a.self_added ? 'No' : 'Yes', a.registered_at, a.last_seen, a.checked_in_at]));
+  res.set('Content-Type', 'text/csv; charset=utf-8').set('Content-Disposition', 'attachment; filename="AMG2026-attendees.csv"');
+  res.send('\ufeff' + lines.map((r) => r.map(cell).join(',')).join('\r\n'));
+});
 admin.post('/attendees', (req, res) => {
   try {
     res.json(upsertAttendee(req.body || {}));

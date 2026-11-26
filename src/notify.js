@@ -36,7 +36,8 @@ function whatsappConfigured() {
 
 // Business-initiated WhatsApp messages must use a pre-approved template.
 // Template body (register this in WhatsApp Manager / Twilio Content):
-//   "Hi {{1}}, {{2}} on the AMG 2026 microsite. Open it here: {{3}}"
+//   "Hi {{1}}, {{2}} on the AMG 2026 microsite. Open it here: {{3}} See you in Goa!"
+// (Meta rejects a template whose body ends with a variable, hence the closing words.)
 async function sendWhatsApp(to, vars) {
   const p = env('WHATSAPP_PROVIDER').toLowerCase();
   const params = [vars.name, vars.headline, vars.link];
@@ -217,4 +218,4 @@ function channelStatus() {
   };
 }
 
-module.exports = { broadcast, channelStatus, personalLink, normalisePhone, emailHtml };
+module.exports = { broadcast, channelStatus, personalLink, normalisePhone, emailHtml, BASE_URL };

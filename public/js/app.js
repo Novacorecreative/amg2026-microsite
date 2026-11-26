@@ -126,14 +126,34 @@
     view.innerHTML = `
       <div class="card gate stack">
         <h2>Welcome 👋</h2>
-        <p class="muted">${esc(msg || 'This microsite is for invited guests. Please open it using the personal link we sent you on WhatsApp or email.')}</p>
+        ${msg ? `<p class="muted">${esc(msg)}</p>` : ''}
+        <form id="joinForm" class="stack">
+          <p class="muted" style="margin:0">Join the event microsite. It takes 10 seconds.</p>
+          <label class="field">Full name<input class="input" name="name" required maxlength="80" autocomplete="name"></label>
+          <label class="field">Mobile number<input class="input" name="phone" required type="tel" inputmode="tel" placeholder="98xxxxxxxx" autocomplete="tel"></label>
+          <label class="field">Email<input class="input" name="email" required type="email" placeholder="name@company.com" autocomplete="email"></label>
+          <button class="btn block">Join</button>
+        </form>
+        <div id="joinOut"></div>
+        <hr style="border:0;border-top:1px solid var(--line);margin:4px 0">
         <form id="resendForm" class="stack">
           <label class="field">Lost your link? Enter your registered email or mobile number
             <input class="input" name="contact" required placeholder="name@company.com or 98xxxxxxxx" autocomplete="email">
           </label>
-          <button class="btn block">Send me my link</button>
+          <button class="btn block secondary">Send me my link</button>
         </form>
       </div>`;
+    $('#joinForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const btn = $('button', e.target); btn.disabled = true;
+      try {
+        const res = await fetch('/api/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.fromEntries(new FormData(e.target))) });
+        const out = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(out.error || 'Something went wrong, please try again');
+        if (out.token) { localStorage.setItem('amg_token', out.token); location.replace('/'); return; }
+        e.target.outerHTML = `<p class="pill ok" style="white-space:normal">You're already on the guest list with a different ${out.sent === 'email' ? 'mobile number' : 'email'}. We've sent your personal link to your registered ${out.sent === 'email' ? 'email' : 'WhatsApp number'}.</p>`;
+      } catch (err) { $('#joinOut').innerHTML = `<p class="small" style="color:var(--coral-dark)">${esc(err.message)}</p>`; btn.disabled = false; }
+    };
     $('#resendForm').onsubmit = async (e) => {
       e.preventDefault();
       const contact = e.target.contact.value.trim();
