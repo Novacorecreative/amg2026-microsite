@@ -244,13 +244,12 @@
         </a>`).join('')}
       <div class="section-title"><h2>Updates</h2><span class="muted small">${posts.length} post${posts.length === 1 ? '' : 's'}</span></div>
       ${posts.length ? posts.map(postHtml).join('') : '<div class="card empty"><div class="em">🌴</div>Updates from the organisers will appear here.</div>'}
-      <div class="section-title"><h2>Good to know</h2></div>
+      ${state.cfg.helpdeskPhone || state.cfg.helpdeskEmail ? `<div class="section-title"><h2>Good to know</h2></div>
       <div class="card stack">
-        <div><b>Venue</b><div class="muted">${esc(state.cfg.venue)}${state.cfg.venueMapUrl ? ` · <a href="${esc(state.cfg.venueMapUrl)}" target="_blank" rel="noopener">Map ↗</a>` : ''}</div></div>
-        ${state.cfg.helpdeskPhone || state.cfg.helpdeskEmail ? `<div><b>Help desk</b><div class="muted">
+        <div><b>Help desk</b><div class="muted">
           ${state.cfg.helpdeskPhone ? `<a href="tel:${esc(state.cfg.helpdeskPhone)}">${esc(state.cfg.helpdeskPhone)}</a> · <a href="https://wa.me/${esc(state.cfg.helpdeskPhone.replace(/\D/g, ''))}" target="_blank" rel="noopener">WhatsApp</a>` : ''}
-          ${state.cfg.helpdeskEmail ? ` · <a href="mailto:${esc(state.cfg.helpdeskEmail)}">${esc(state.cfg.helpdeskEmail)}</a>` : ''}</div></div>` : ''}
-      </div>`;
+          ${state.cfg.helpdeskEmail ? ` · <a href="mailto:${esc(state.cfg.helpdeskEmail)}">${esc(state.cfg.helpdeskEmail)}</a>` : ''}</div></div>
+      </div>` : ''}`;
     ($('#passQr') || $('#passShow')).onclick = showPass;
     if (postId) { const el = $('#post-' + postId); if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50); }
   }
