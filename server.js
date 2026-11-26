@@ -809,7 +809,13 @@ admin.post('/posts', upload.single('media'), (req, res) => {
   res.json({ post, notification });
 });
 admin.patch('/posts/:id', (req, res) => {
-  db.prepare('UPDATE posts SET pinned = ? WHERE id = ?').run(req.body?.pinned ? 1 : 0, req.params.id);
+  const b = req.body || {};
+  if ('title' in b) { // edit text only; never re-notifies guests
+    const title = String(b.title).trim();
+    if (!title) return bad(res, 'Headline is required');
+    db.prepare('UPDATE posts SET title = ?, body = ? WHERE id = ?').run(title, String(b.body || '').trim() || null, req.params.id);
+  }
+  if ('pinned' in b) db.prepare('UPDATE posts SET pinned = ? WHERE id = ?').run(b.pinned ? 1 : 0, req.params.id);
   res.json({ ok: true });
 });
 admin.delete('/posts/:id', (req, res) => {

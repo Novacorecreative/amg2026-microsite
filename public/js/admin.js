@@ -242,8 +242,9 @@
         <div>${posts.map((p) => `<div class="card post ${p.pinned ? 'pinned' : ''}">
             <div class="row"><span class="muted small">${when(p.created_at)}${p.media_type ? ' · ' + p.media_type : ''}</span><span class="spacer"></span>
               <button class="btn sm ghost" data-pin="${p.id}" data-v="${p.pinned ? 0 : 1}">${p.pinned ? 'Unpin' : 'Pin'}</button>
+              <button class="btn sm ghost" data-edit="${p.id}">Edit</button>
               <button class="btn sm ghost" data-del="${p.id}">Delete</button></div>
-            <h3>${esc(p.title)}</h3>${p.body ? `<div class="body small">${esc(p.body)}</div>` : ''}
+            <div data-text="${p.id}"><h3>${esc(p.title)}</h3>${p.body ? `<div class="body small">${esc(p.body)}</div>` : ''}</div>
             ${p.media_type === 'image' ? `<div class="media"><img src="/uploads/${esc(p.media_path)}"></div>` : ''}
             ${p.media_type === 'video' ? `<div class="media"><video src="/uploads/${esc(p.media_path)}" controls preload="metadata"></video></div>` : ''}
             ${p.link_url ? `<div class="small"><a href="${esc(p.link_url)}" target="_blank">${esc(p.link_url)}</a></div>` : ''}
@@ -266,6 +267,20 @@
       };
       xhr.open('POST', '/api/admin/posts'); xhr.setRequestHeader('x-admin', adminToken); xhr.send(fd);
     };
+    // Edit headline/text in place; saving doesn't notify anyone again.
+    $$('[data-edit]').forEach((b) => (b.onclick = () => {
+      const p = posts.find((x) => x.id === Number(b.dataset.edit)), box = $(`[data-text="${p.id}"]`);
+      box.innerHTML = `<div class="stack" style="margin-top:8px">
+        <input class="input" data-f="title" value="${esc(p.title)}" aria-label="Headline">
+        <textarea class="input" data-f="body" rows="4" aria-label="Text">${esc(p.body || '')}</textarea>
+        <div class="row"><span class="spacer"></span><button class="btn sm ghost" data-cancel>Cancel</button><button class="btn sm" data-save>Save</button></div>
+        <div class="muted small">Saving updates the post for guests; nobody is notified again.</div></div>`;
+      $('[data-cancel]', box).onclick = () => renderUpdates();
+      $('[data-save]', box).onclick = run(async () => {
+        await api('/posts/' + p.id, { method: 'PATCH', body: { title: $('[data-f=title]', box).value, body: $('[data-f=body]', box).value } });
+        toast('Update saved'); renderUpdates();
+      });
+    }));
     $$('[data-pin]').forEach((b) => (b.onclick = run(async () => { await api('/posts/' + b.dataset.pin, { method: 'PATCH', body: { pinned: b.dataset.v === '1' } }); renderUpdates(); })));
     $$('[data-del]').forEach((b) => (b.onclick = run(async () => { if (!confirm('Delete this update?')) return; await api('/posts/' + b.dataset.del, { method: 'DELETE' }); renderUpdates(); })));
   }
