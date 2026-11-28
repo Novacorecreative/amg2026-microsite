@@ -342,6 +342,10 @@ body.has-partners main { padding-bottom: 20px; }
 @media (min-width: 701px) { .hero.has-banner .hero-inner { left: auto; right: 8px; } }
 body:has(.hero.has-banner) main { margin-top: 16px; }
 
+/* ---------- add to home screen tip ---------- */
+.card.install { display: flex; align-items: center; gap: 12px; }
+.card.install img { border-radius: 10px; flex: none; }
+
 /* ---------- event pass ---------- */
 .card.pass { display: flex; gap: 16px; align-items: center; border-left: 5px solid var(--coral); }
 .card.pass.in { border-left-color: var(--teal-500); }

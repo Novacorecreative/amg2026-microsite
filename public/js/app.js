@@ -45,6 +45,7 @@
     history.replaceState(null, '', url.pathname + url.search + url.hash);
   }
   let token = localStorage.getItem('amg_token');
+  if (token) $('#manifestLink').href = '/manifest.webmanifest?t=' + encodeURIComponent(token);
 
   async function api(path, opts = {}) {
     const res = await fetch('/api' + path, {
@@ -206,6 +207,46 @@
     </article>`;
   }
 
+  // ---------- add to home screen ----------
+  let installPrompt = null;
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); installPrompt = e; });
+  window.addEventListener('appinstalled', () => hideInstall());
+  function installCard() {
+    let hidden = false;
+    try { hidden = !!localStorage.getItem('amg_install_hide'); } catch { /* private mode */ }
+    if (standalone || hidden) return '';
+    return `<div class="card install" id="installCard">
+        <img src="/icons/icon-192.png" alt="" width="44" height="44">
+        <div style="flex:1;min-width:0"><b>Add AMG 2026 to your home screen</b><div class="muted small" id="installHow">Open the event in one tap, like an app.</div></div>
+        <button class="btn sm" id="installBtn">Add</button>
+        <button class="btn sm ghost" id="installX" aria-label="Hide this tip">✕</button></div>`;
+  }
+  function wireInstall() {
+    if (!$('#installBtn')) return;
+    $('#installBtn').onclick = async () => {
+      if (installPrompt) {
+        installPrompt.prompt();
+        const { outcome } = await installPrompt.userChoice;
+        installPrompt = null;
+        if (outcome === 'accepted') hideInstall();
+        return;
+      }
+      // iPhones save the page's current address with the icon, so put the guest's own link in it first.
+      history.replaceState(null, '', `/?t=${encodeURIComponent(token)}${location.hash}`);
+      $('#installHow').innerHTML = ios
+        ? 'In <b>Safari</b>, tap <b>Share</b> (the square with an arrow), then <b>Add to Home Screen</b>.'
+        : 'Open the browser menu <b>⋮</b>, then <b>Add to Home screen</b> or <b>Install app</b>.';
+      $('#installBtn').classList.add('hidden');
+    };
+    $('#installX').onclick = hideInstall;
+  }
+  function hideInstall() {
+    try { localStorage.setItem('amg_install_hide', '1'); } catch { /* private mode */ }
+    $('#installCard')?.remove();
+  }
+
   async function renderFeed(postId) {
     const [posts, agenda, acts] = await Promise.all([api('/feed'), api('/agenda'), api('/activities')]);
     state.agenda = agenda; state.activities = acts;
@@ -224,6 +265,7 @@
           ${inAt ? '<button class="btn sm secondary" id="passShow" style="margin-top:8px">Show my pass</button>' : ''}
         </div>
       </div>
+      ${installCard()}
       <div class="card">
         <div class="now-card">
           <div class="slot ${current ? 'on' : ''}">
@@ -251,6 +293,7 @@
           ${state.cfg.helpdeskEmail ? ` · <a href="mailto:${esc(state.cfg.helpdeskEmail)}">${esc(state.cfg.helpdeskEmail)}</a>` : ''}</div></div>
       </div>` : ''}`;
     ($('#passQr') || $('#passShow')).onclick = showPass;
+    wireInstall();
     if (postId) { const el = $('#post-' + postId); if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50); }
   }
 

@@ -83,6 +83,17 @@ function adminAuth(req, res, next) {
 const publicAttendee = (a) => ({ id: a.id, name: a.name, company: a.company, designation: a.designation });
 
 // ---------------- public ----------------
+// Home-screen app. start_url carries the guest's own link: iPhones keep a home-screen app's sign-in apart from Safari's.
+app.get('/manifest.webmanifest', (req, res) => {
+  const b = getBranding();
+  const t = /^[\w-]{16,64}$/.test(String(req.query.t || '')) ? req.query.t : '';
+  res.type('application/manifest+json').json({
+    id: '/', name: b.eventName, short_name: b.eventName, start_url: t ? `/?t=${t}` : '/', scope: '/',
+    display: 'standalone', background_color: '#ffffff', theme_color: b.colorPrimary,
+    icons: [192, 512].map((n) => ({ src: `/icons/icon-${n}.png`, sizes: `${n}x${n}`, type: 'image/png', purpose: 'any maskable' })),
+  });
+});
+
 app.get('/api/config', (_req, res) => {
   const branding = getBranding();
   res.json({
